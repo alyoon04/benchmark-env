@@ -10,7 +10,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from task_bundle.errors import GitError
+from task_bundle.errors import GitError, HiddenTestLeak
 
 
 def _git(args: list[str], cwd: Path, timeout: int = 600) -> str:
@@ -26,6 +26,18 @@ def _git(args: list[str], cwd: Path, timeout: int = 600) -> str:
     if proc.returncode != 0:
         raise GitError(f"`{' '.join(cmd)}` failed (exit {proc.returncode}):\n{proc.stderr.strip()}")
     return proc.stdout
+
+
+def resolve_repo_url(url: str, bundle_path: Path) -> str:
+    """Resolve a repo URL, allowing bundle-relative local paths.
+
+    A url like ``../.origin`` (no scheme, not absolute) is resolved against the
+    bundle directory so committed example bundles can reference repos created on
+    the local machine without machine-specific absolute paths in task.json.
+    """
+    if "://" in url or url.startswith(("git@", "/")):
+        return url
+    return str((bundle_path / url).resolve())
 
 
 def clone_at_commit(url: str, commit: str, dest: Path, force: bool = False) -> None:
@@ -64,3 +76,38 @@ def _head_commit(repo: Path) -> str | None:
         return _git(["rev-parse", "HEAD"], cwd=repo).strip()
     except GitError:
         return None
+
+
+def build_clean_tree(workspace: Path, dest: Path, excludes: list[str] | None = None) -> None:
+    """Copy the baseline workspace to ``dest`` WITHOUT .git and without ``excludes``.
+
+    This is the only way solver-visible trees and image build contexts are made:
+    excluded content is never copied in the first place (never copy-then-delete),
+    which is the structural half of the test-hiding invariant (DESIGN.md §3).
+    ``excludes`` are repo-root-relative paths (files or directories).
+    """
+    if dest.exists():
+        shutil.rmtree(dest)
+    excluded = {".git", *(excludes or [])}
+    excluded_abs = {(workspace / e).resolve() for e in excluded}
+
+    def _ignore(directory: str, names: list[str]) -> set[str]:
+        return {n for n in names if (Path(directory) / n).resolve() in excluded_abs}
+
+    shutil.copytree(workspace, dest, ignore=_ignore, symlinks=True)
+
+
+def assert_no_hidden_content(tree: Path, hidden_files: list[Path]) -> None:
+    """Abort if any hidden test's exact content appears anywhere in ``tree``.
+
+    Pre-flight guard run on solver-visible trees. Content comparison (not name
+    comparison) because a same-named file with different content is legitimate,
+    while identical bytes under any name is a leak.
+    """
+    hidden_contents = {f.read_bytes() for f in hidden_files}
+    for path in tree.rglob("*"):
+        if path.is_file() and path.read_bytes() in hidden_contents:
+            raise HiddenTestLeak(
+                f"File {path} in the solver-visible tree is byte-identical to a hidden "
+                "test. Refusing to continue; the solver must never see hidden tests."
+            )

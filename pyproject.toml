@@ -40,3 +40,4 @@ mypy_path = "src"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["docker: requires a running Docker daemon (skipped automatically if absent)"]

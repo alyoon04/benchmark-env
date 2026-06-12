@@ -6,11 +6,30 @@ which exercises the same shallow direct-SHA fetch path used against real remotes
 
 import shutil
 import subprocess
+from functools import cache
 from pathlib import Path
 
 import pytest
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+@cache
+def docker_available() -> bool:
+    if shutil.which("docker") is None:
+        return False
+    proc = subprocess.run(["docker", "info"], capture_output=True, timeout=30, check=False)
+    return proc.returncode == 0
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    if docker_available():
+        return
+    skip = pytest.mark.skip(reason="Docker daemon not available")
+    for item in items:
+        if "docker" in item.keywords:
+            item.add_marker(skip)
+
 
 _GIT_ENV = {
     "GIT_CONFIG_GLOBAL": "/dev/null",

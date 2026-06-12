@@ -56,7 +56,9 @@ class TestInitCommand:
     ) -> None:
         url, baseline, _ = toy_origin
         bundle_dir = tmp_path / "toy-task"
-        result = runner.invoke(app, ["init", str(bundle_dir), "--repo", url, "--commit", baseline])
+        result = runner.invoke(
+            app, ["init", str(bundle_dir), "--repo", url, "--commit", baseline, "--skip-build"]
+        )
         assert result.exit_code == 0, result.output
         bundle = Bundle.load(bundle_dir)
         assert bundle.load_state().status == "initialized"
@@ -67,8 +69,10 @@ class TestInitCommand:
     ) -> None:
         url, baseline, _ = toy_origin
         bundle_dir = tmp_path / "toy-task"
-        runner.invoke(app, ["init", str(bundle_dir), "--repo", url, "--commit", baseline])
-        result = runner.invoke(app, ["init", str(bundle_dir)])
+        runner.invoke(
+            app, ["init", str(bundle_dir), "--repo", url, "--commit", baseline, "--skip-build"]
+        )
+        result = runner.invoke(app, ["init", str(bundle_dir), "--skip-build"])
         assert result.exit_code == 0, result.output
 
     def test_scaffold_without_repo_flag_fails_with_usage_hint(self, tmp_path: Path) -> None:
@@ -88,6 +92,10 @@ class TestInitCommand:
     ) -> None:
         url, baseline, _ = toy_origin
         bundle_dir = tmp_path / "toy-task"
-        runner.invoke(app, ["init", str(bundle_dir), "--repo", url, "--commit", baseline])
-        result = runner.invoke(app, ["init", str(bundle_dir), "--repo", url, "--commit", baseline])
+        runner.invoke(
+            app, ["init", str(bundle_dir), "--repo", url, "--commit", baseline, "--skip-build"]
+        )
+        result = runner.invoke(
+            app, ["init", str(bundle_dir), "--repo", url, "--commit", baseline, "--skip-build"]
+        )
         assert result.exit_code != 0

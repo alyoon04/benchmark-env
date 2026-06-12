@@ -8,11 +8,15 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.table import Table
 
 from task_bundle import __version__
 from task_bundle.bundle import Bundle, utc_now_iso
-from task_bundle.errors import TaskError
-from task_bundle.workspace import clone_at_commit
+from task_bundle.container import Docker
+from task_bundle.errors import ContractViolation, TaskError
+from task_bundle.grading import FLAKY, check_baseline_contract, consolidate
+from task_bundle.harness import ensure_image, run_baseline_suites, smoke_test
+from task_bundle.workspace import clone_at_commit, resolve_repo_url
 
 app = typer.Typer(
     name="task",
@@ -53,6 +57,14 @@ def init(
     force: Annotated[
         bool, typer.Option(help="Re-clone the workspace even if already present.")
     ] = False,
+    build: Annotated[
+        bool,
+        typer.Option(
+            "--build/--skip-build",
+            help="Build and smoke-test the task image (requires Docker).",
+        ),
+    ] = True,
+    rebuild: Annotated[bool, typer.Option(help="Force an image rebuild even if cached.")] = False,
 ) -> None:
     """Scaffold the bundle (if needed) and materialize the repo at the pinned commit.
 
@@ -87,9 +99,21 @@ def init(
         f"Cloning [bold]{bundle.spec.repo.url}[/bold] @ {bundle.spec.repo.commit[:12]} ..."
     )
     clone_at_commit(
-        bundle.spec.repo.url, bundle.spec.repo.commit, bundle.workspace_dir, force=force
+        resolve_repo_url(bundle.spec.repo.url, bundle.path),
+        bundle.spec.repo.commit,
+        bundle.workspace_dir,
+        force=force,
     )
     state = bundle.load_state()
+    if build:
+        docker = Docker()
+        docker.ensure_available()
+        with console.status("Building task image (cached by content hash)..."):
+            tag, _build_log = ensure_image(docker, bundle, rebuild=rebuild)
+            smoke_test(docker, tag)
+        state.image_tag = tag
+        state.image_digest = docker.image_id(tag)
+        console.print(f"[green]Image ready[/green]: {tag} (smoke test passed)")
     state.status = "initialized"
     state.initialized_at = utc_now_iso()
     bundle.save_state(state)
@@ -98,6 +122,68 @@ def init(
         f"(workspace pinned to {bundle.spec.repo.commit[:12]}).\n"
         "Next: add hidden tests under tests/fail2pass/ and tests/pass2pass/, "
         "then run [bold]task validate[/bold]."
+    )
+
+
+@app.command()
+def validate(
+    bundle_path: Annotated[Path, typer.Argument(help="Bundle directory to validate.")],
+    attempts: Annotated[int, typer.Option(help="Times to run each suite for flake detection.")] = 3,
+    rebuild: Annotated[bool, typer.Option(help="Force an image rebuild even if cached.")] = False,
+) -> None:
+    """Check the baseline contract: pass2pass all pass, fail2pass all fail.
+
+    Each suite runs --attempts times (default 3, per SWE-bench Pro) in fresh
+    containers; tests with inconsistent statuses are flagged flaky. Exits 2 with
+    specific reasons if the contract is violated.
+    """
+    bundle = Bundle.load(bundle_path)
+    bundle.test_format()  # fail fast with a clear message if hidden tests are missing
+    docker = Docker()
+    docker.ensure_available()
+    with console.status("Ensuring task image..."):
+        tag, _ = ensure_image(docker, bundle, rebuild=rebuild)
+    console.print(f"Image: {tag}")
+    with console.status(f"Running hidden test suites x{attempts} in fresh containers..."):
+        executions = run_baseline_suites(docker, bundle, tag, attempts=attempts)
+    results = consolidate(executions)
+
+    table = Table(title=f"Baseline validation: {bundle.spec.id}")
+    table.add_column("Test")
+    table.add_column("Bucket")
+    table.add_column("Attempts")
+    table.add_column("Expected")
+    table.add_column("Result")
+    for r in results:
+        expected = "fail" if r.bucket == "fail2pass" else "pass"
+        ok = (r.status == "failed") if r.bucket == "fail2pass" else (r.status == "passed")
+        style = "yellow" if r.status == FLAKY else ("green" if ok else "red")
+        table.add_row(
+            r.test,
+            r.bucket,
+            " ".join(r.attempt_statuses),
+            expected,
+            f"[{style}]{'OK' if ok else r.status.upper()}[/{style}]",
+        )
+    console.print(table)
+
+    problems = check_baseline_contract(results)
+    if problems:
+        for p in problems:
+            console.print(f"[bold red]contract violation:[/bold red] {p}")
+        raise ContractViolation(
+            f"baseline contract violated for task {bundle.spec.id} "
+            f"({len(problems)} problem(s) above)."
+        )
+    state = bundle.load_state()
+    state.status = "validated"
+    state.validated_at = utc_now_iso()
+    state.image_tag = tag
+    state.image_digest = docker.image_id(tag)
+    bundle.save_state(state)
+    console.print(
+        f"[green]Baseline contract holds[/green] for [bold]{bundle.spec.id}[/bold]: "
+        f"all pass2pass pass, all fail2pass fail (x{attempts} consistent)."
     )
 
 

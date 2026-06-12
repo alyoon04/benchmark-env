@@ -167,7 +167,10 @@ validate, and grade phases.
 
 Container run flags (solve phase):
 `--network none --user 1000:1000 --memory 4g --cpus 2 --pids-limit 512 --cap-drop ALL
---security-opt no-new-privileges`, writable workspace volume only, per-run timeout
+--cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER
+--security-opt no-new-privileges` (the three re-added caps are needed by root-user
+*orchestrator* execs that stage hidden tests; the solver runs as uid 1000 and cannot
+use them), writable workspace volume only, per-run timeout
 enforced by the orchestrator (SIGKILL on expiry). Grade phase: same minus solver,
 plus staged tests; network stays off.
 
@@ -258,7 +261,8 @@ src/task_bundle/
   cli.py          # typer app; thin — parses, delegates, renders rich output
   bundle.py       # TaskSpec pydantic models, bundle load/scaffold/state
   container.py    # docker engine wrapper: build, run, exec, cp, limits
-  workspace.py    # cleaned-tree construction + hiding-invariant guard
+  harness.py      # bundle-aware orchestration: task images, staging, suite runs
+  workspace.py    # pinned clones, cleaned-tree construction, hiding-invariant guard
   grading.py      # verdict logic (pure functions; table-tested)
   solver/
     base.py       # Solver protocol
