@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 
 from task_bundle.bundle import Bundle
 from task_bundle.cli import app
+from task_bundle.db import Database
 from task_bundle.errors import ContractViolation
 
 pytestmark = pytest.mark.docker
@@ -77,7 +78,9 @@ def make_initialized_bundle(path: Path, origin: tuple[str, str], *, f2p: str, p2
     return bundle
 
 
-def test_validate_passes_on_correct_bundle(tmp_path: Path, shared_origin: tuple[str, str]) -> None:
+def test_validate_passes_on_correct_bundle(
+    tmp_path: Path, shared_origin: tuple[str, str], isolated_db: Path
+) -> None:
     bundle = make_initialized_bundle(tmp_path / "good", shared_origin, f2p=F2P_TEST, p2p=P2P_TEST)
     result = runner.invoke(app, ["validate", str(bundle.path)])
     assert result.exit_code == 0, result.output
@@ -85,6 +88,12 @@ def test_validate_passes_on_correct_bundle(tmp_path: Path, shared_origin: tuple[
     state = bundle.load_state()
     assert state.status == "validated"
     assert state.image_tag and state.image_digest
+    # per-attempt test results and the output artifact are queryable afterwards
+    db = Database(isolated_db)
+    cmd = next(r for r in db.recent_commands() if r["name"] == "validate")
+    rows = db.test_results_for(command_id=cmd["id"])
+    assert len(rows) == 6  # 2 tests x 3 attempts
+    assert any(a["type"] == "test_output" for a in db.artifacts_for(cmd["id"]))
 
 
 def test_validate_rejects_f2p_that_passes_on_baseline(

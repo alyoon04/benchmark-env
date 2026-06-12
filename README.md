@@ -7,7 +7,7 @@ isolation — with every command logged to a queryable SQLite database.
 > **Status: work in progress.** Built in reviewable milestones; see
 > [PROGRESS.md](PROGRESS.md) for what exists today and [DESIGN.md](DESIGN.md) for the
 > full architecture. Currently implemented: bundle spec, `task init` (with image
-> build), and `task validate`.
+> build), `task validate`, and SQLite command logging with `task logs` / `task runs`.
 
 ## Why
 
@@ -114,10 +114,28 @@ gets a fresh container so runs cannot contaminate each other.
 |---|---|---|
 | `task init <bundle> [--repo URL --commit SHA] [--base-image IMG] [--test-command TPL] [--setup CMD]... [--force] [--skip-build] [--rebuild]` | ✅ | Scaffold the bundle, clone the repo at the pinned commit, build + smoke-test the task image (cached by content hash). |
 | `task validate <bundle> [--attempts N] [--rebuild]` | ✅ | Baseline contract: pass2pass all pass, fail2pass all fail; each suite runs 3× in fresh containers and flaky tests are flagged. Exit 2 with specific reasons on violation. |
-| `task logs` / `task runs` | planned (M3) | Query command logs and runs from SQLite. |
+| `task logs [<command-id>]` | ✅ | No argument: list recent commands. With an id: show argv, exit code, per-test results, artifacts, and the command log. |
+| `task runs list` / `task runs show <run-id>` | ✅ | Query solver runs (populated by `task run`, milestone 4). |
 | `task run <bundle> --solver {stub,claude}` | planned (M4/M5) | Solve in isolation → grade hidden tests → JSON report. |
 | `task import-swebench <instance-id>` | planned (M6) | Convert a SWE-bench Pro instance into a bundle. |
 | `task verify-gold` / `task diff` / `task doctor` / `task clean` | planned (M7) | Authoring and ops helpers. |
+
+## Observability
+
+Every CLI invocation is recorded in SQLite (default `~/.task-bundle/task.db`;
+override with `--db`, `--artifacts-dir`, or `TASK_BUNDLE_DB`/`TASK_BUNDLE_ARTIFACTS`)
+and prints its command id when it finishes — even on failure. Collaborators can then
+inspect what happened without re-running anything:
+
+```sh
+uv run task logs                  # recent commands: id, name, exit code, bundle
+uv run task logs cmd_<id>         # one command: argv, per-test results, artifacts, log
+uv run task runs list             # past solver runs and verdicts
+```
+
+Tables: `commands` (one row per invocation), `runs` (solver runs + verdict/cost),
+`test_results` (per test, per attempt, per phase), `artifacts` (paths to on-disk
+build logs, test output, diffs, transcripts under `~/.task-bundle/artifacts/<command-id>/`).
 
 ## Example bundle
 

@@ -1,8 +1,16 @@
 """Typer CLI entrypoint. Thin layer: parse args, delegate to library code, render output.
 
-Every command will additionally log to SQLite from milestone 3 onward.
+Every command runs inside ``record_command``, which writes a ``commands`` row to
+SQLite at start and finish (even on crashes), creates the command's artifact
+directory, and prints the command id so collaborators can query it later with
+``task logs <command-id>``.
 """
 
+import json
+import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
@@ -13,8 +21,9 @@ from rich.table import Table
 from task_bundle import __version__
 from task_bundle.bundle import Bundle, utc_now_iso
 from task_bundle.container import Docker
+from task_bundle.db import Database, new_id
 from task_bundle.errors import ContractViolation, TaskError
-from task_bundle.grading import FLAKY, check_baseline_contract, consolidate
+from task_bundle.grading import FLAKY, TestExecution, check_baseline_contract, consolidate
 from task_bundle.harness import ensure_image, run_baseline_suites, smoke_test
 from task_bundle.workspace import clone_at_commit, resolve_repo_url
 
@@ -24,14 +33,96 @@ app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
 )
+runs_app = typer.Typer(help="Query past solver runs.", no_args_is_help=True)
+app.add_typer(runs_app, name="runs")
 console = Console()
 err_console = Console(stderr=True, style="bold red")
+
+
+@dataclass
+class Settings:
+    """Global persistence locations, overridable via --db/--artifacts-dir or env."""
+
+    db_path: Path = Path.home() / ".task-bundle" / "task.db"
+    artifacts_dir: Path = Path.home() / ".task-bundle" / "artifacts"
+
+
+settings = Settings()
+
+
+class CommandRecord:
+    """Handle for the currently recorded command: logging, artifacts, test results."""
+
+    def __init__(self, db: Database, command_id: str, artifact_dir: Path) -> None:
+        self.db = db
+        self.command_id = command_id
+        self.artifact_dir = artifact_dir
+        self._log_path = artifact_dir / "command.log"
+
+    def log(self, message: str) -> None:
+        """Append a line to the command's on-disk log."""
+        with self._log_path.open("a") as f:
+            f.write(f"{utc_now_iso()} {message}\n")
+
+    def save_artifact(self, type_: str, filename: str, content: str) -> Path:
+        """Write an artifact file and register its path in the DB."""
+        path = self.artifact_dir / filename
+        path.write_text(content)
+        self.db.add_artifact(self.command_id, type_, str(path))
+        return path
+
+    def add_test_results(self, phase: str, executions: list[TestExecution]) -> None:
+        self.db.record_test_results(self.command_id, phase, executions)
+
+
+@contextmanager
+def record_command(name: str, bundle_path: Path | None = None) -> Iterator[CommandRecord]:
+    """Record a CLI invocation in SQLite, including its exit code on any outcome."""
+    db = Database(settings.db_path)
+    command_id = new_id("cmd")
+    artifact_dir = settings.artifacts_dir / command_id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    record = CommandRecord(db, command_id, artifact_dir)
+    db.insert_command(
+        command_id,
+        name,
+        json.dumps(sys.argv[1:]),
+        str(bundle_path) if bundle_path else None,
+        utc_now_iso(),
+        str(record._log_path),
+    )
+    exit_code = 0
+    try:
+        yield record
+    except TaskError as e:
+        exit_code = e.exit_code
+        record.log(f"error: {e}")
+        raise
+    except BaseException:
+        exit_code = 1
+        raise
+    finally:
+        db.finish_command(command_id, exit_code, utc_now_iso())
+        db.close()
+        console.print(f"[dim]command id: {command_id}[/dim]")
 
 
 @app.callback()
 def _root(
     version: Annotated[bool, typer.Option("--version", help="Show version and exit.")] = False,
+    db: Annotated[
+        Path | None,
+        typer.Option(envvar="TASK_BUNDLE_DB", help="SQLite database path."),
+    ] = None,
+    artifacts_dir: Annotated[
+        Path | None,
+        typer.Option(envvar="TASK_BUNDLE_ARTIFACTS", help="Artifacts root directory."),
+    ] = None,
 ) -> None:
+    if db:
+        settings.db_path = db
+    if artifacts_dir:
+        settings.artifacts_dir = artifacts_dir
     if version:
         console.print(f"task-bundle {__version__}")
         raise typer.Exit()
@@ -72,57 +163,64 @@ def init(
     description.md, and the tests/ skeleton first; on an existing bundle, just
     (re-)initializes the workspace from task.json.
     """
-    if (bundle_path / "task.json").is_file():
-        bundle = Bundle.load(bundle_path)
-        if repo or commit:
-            raise TaskError(
-                f"{bundle_path} already has a task.json; --repo/--commit are only for "
-                "scaffolding. Edit task.json directly to change the pin."
+    with record_command("init", bundle_path) as rec:
+        if (bundle_path / "task.json").is_file():
+            bundle = Bundle.load(bundle_path)
+            if repo or commit:
+                raise TaskError(
+                    f"{bundle_path} already has a task.json; --repo/--commit are only for "
+                    "scaffolding. Edit task.json directly to change the pin."
+                )
+        else:
+            if not repo or not commit:
+                raise TaskError(
+                    "Scaffolding a new bundle requires --repo and --commit, e.g.\n"
+                    f"  task init {bundle_path} --repo https://github.com/org/repo "
+                    "--commit <full-sha>"
+                )
+            bundle = Bundle.scaffold(
+                bundle_path,
+                repo_url=repo,
+                commit=commit,
+                base_image=base_image,
+                test_command=test_command,
+                setup_commands=setup,
             )
-    else:
-        if not repo or not commit:
-            raise TaskError(
-                "Scaffolding a new bundle requires --repo and --commit, e.g.\n"
-                f"  task init {bundle_path} --repo https://github.com/org/repo --commit <full-sha>"
-            )
-        bundle = Bundle.scaffold(
-            bundle_path,
-            repo_url=repo,
-            commit=commit,
-            base_image=base_image,
-            test_command=test_command,
-            setup_commands=setup,
-        )
-        console.print(f"[green]Scaffolded[/green] bundle at [bold]{bundle.path}[/bold]")
+            rec.log(f"scaffolded bundle at {bundle.path}")
+            console.print(f"[green]Scaffolded[/green] bundle at [bold]{bundle.path}[/bold]")
 
-    console.print(
-        f"Cloning [bold]{bundle.spec.repo.url}[/bold] @ {bundle.spec.repo.commit[:12]} ..."
-    )
-    clone_at_commit(
-        resolve_repo_url(bundle.spec.repo.url, bundle.path),
-        bundle.spec.repo.commit,
-        bundle.workspace_dir,
-        force=force,
-    )
-    state = bundle.load_state()
-    if build:
-        docker = Docker()
-        docker.ensure_available()
-        with console.status("Building task image (cached by content hash)..."):
-            tag, _build_log = ensure_image(docker, bundle, rebuild=rebuild)
-            smoke_test(docker, tag)
-        state.image_tag = tag
-        state.image_digest = docker.image_id(tag)
-        console.print(f"[green]Image ready[/green]: {tag} (smoke test passed)")
-    state.status = "initialized"
-    state.initialized_at = utc_now_iso()
-    bundle.save_state(state)
-    console.print(
-        f"[green]Initialized[/green] task [bold]{bundle.spec.id}[/bold] "
-        f"(workspace pinned to {bundle.spec.repo.commit[:12]}).\n"
-        "Next: add hidden tests under tests/fail2pass/ and tests/pass2pass/, "
-        "then run [bold]task validate[/bold]."
-    )
+        console.print(
+            f"Cloning [bold]{bundle.spec.repo.url}[/bold] @ {bundle.spec.repo.commit[:12]} ..."
+        )
+        clone_at_commit(
+            resolve_repo_url(bundle.spec.repo.url, bundle.path),
+            bundle.spec.repo.commit,
+            bundle.workspace_dir,
+            force=force,
+        )
+        rec.log(f"workspace pinned to {bundle.spec.repo.commit}")
+        state = bundle.load_state()
+        if build:
+            docker = Docker()
+            docker.ensure_available()
+            with console.status("Building task image (cached by content hash)..."):
+                tag, build_log = ensure_image(docker, bundle, rebuild=rebuild)
+                smoke_test(docker, tag)
+            state.image_tag = tag
+            state.image_digest = docker.image_id(tag)
+            if build_log:
+                rec.save_artifact("build_log", "image_build.log", build_log)
+            rec.log(f"image ready: {tag} (digest {state.image_digest}), smoke test passed")
+            console.print(f"[green]Image ready[/green]: {tag} (smoke test passed)")
+        state.status = "initialized"
+        state.initialized_at = utc_now_iso()
+        bundle.save_state(state)
+        console.print(
+            f"[green]Initialized[/green] task [bold]{bundle.spec.id}[/bold] "
+            f"(workspace pinned to {bundle.spec.repo.commit[:12]}).\n"
+            "Next: add hidden tests under tests/fail2pass/ and tests/pass2pass/, "
+            "then run [bold]task validate[/bold]."
+        )
 
 
 @app.command()
@@ -137,54 +235,210 @@ def validate(
     containers; tests with inconsistent statuses are flagged flaky. Exits 2 with
     specific reasons if the contract is violated.
     """
-    bundle = Bundle.load(bundle_path)
-    bundle.test_format()  # fail fast with a clear message if hidden tests are missing
-    docker = Docker()
-    docker.ensure_available()
-    with console.status("Ensuring task image..."):
-        tag, _ = ensure_image(docker, bundle, rebuild=rebuild)
-    console.print(f"Image: {tag}")
-    with console.status(f"Running hidden test suites x{attempts} in fresh containers..."):
-        executions = run_baseline_suites(docker, bundle, tag, attempts=attempts)
-    results = consolidate(executions)
-
-    table = Table(title=f"Baseline validation: {bundle.spec.id}")
-    table.add_column("Test")
-    table.add_column("Bucket")
-    table.add_column("Attempts")
-    table.add_column("Expected")
-    table.add_column("Result")
-    for r in results:
-        expected = "fail" if r.bucket == "fail2pass" else "pass"
-        ok = (r.status == "failed") if r.bucket == "fail2pass" else (r.status == "passed")
-        style = "yellow" if r.status == FLAKY else ("green" if ok else "red")
-        table.add_row(
-            r.test,
-            r.bucket,
-            " ".join(r.attempt_statuses),
-            expected,
-            f"[{style}]{'OK' if ok else r.status.upper()}[/{style}]",
+    with record_command("validate", bundle_path) as rec:
+        bundle = Bundle.load(bundle_path)
+        bundle.test_format()  # fail fast with a clear message if hidden tests are missing
+        docker = Docker()
+        docker.ensure_available()
+        with console.status("Ensuring task image..."):
+            tag, build_log = ensure_image(docker, bundle, rebuild=rebuild)
+        if build_log:
+            rec.save_artifact("build_log", "image_build.log", build_log)
+        console.print(f"Image: {tag}")
+        with console.status(f"Running hidden test suites x{attempts} in fresh containers..."):
+            executions = run_baseline_suites(docker, bundle, tag, attempts=attempts)
+        rec.add_test_results("baseline", executions)
+        rec.save_artifact(
+            "test_output",
+            "baseline_tests.txt",
+            "\n".join(
+                f"=== {e.test} [{e.bucket}] attempt {e.attempt}: {e.status} ===\n{e.output}"
+                for e in executions
+            ),
         )
-    console.print(table)
+        results = consolidate(executions)
 
-    problems = check_baseline_contract(results)
-    if problems:
-        for p in problems:
-            console.print(f"[bold red]contract violation:[/bold red] {p}")
-        raise ContractViolation(
-            f"baseline contract violated for task {bundle.spec.id} "
-            f"({len(problems)} problem(s) above)."
+        table = Table(title=f"Baseline validation: {bundle.spec.id}")
+        table.add_column("Test")
+        table.add_column("Bucket")
+        table.add_column("Attempts")
+        table.add_column("Expected")
+        table.add_column("Result")
+        for r in results:
+            expected = "fail" if r.bucket == "fail2pass" else "pass"
+            ok = (r.status == "failed") if r.bucket == "fail2pass" else (r.status == "passed")
+            style = "yellow" if r.status == FLAKY else ("green" if ok else "red")
+            table.add_row(
+                r.test,
+                r.bucket,
+                " ".join(r.attempt_statuses),
+                expected,
+                f"[{style}]{'OK' if ok else r.status.upper()}[/{style}]",
+            )
+        console.print(table)
+
+        problems = check_baseline_contract(results)
+        if problems:
+            for p in problems:
+                rec.log(f"contract violation: {p}")
+                console.print(f"[bold red]contract violation:[/bold red] {p}")
+            raise ContractViolation(
+                f"baseline contract violated for task {bundle.spec.id} "
+                f"({len(problems)} problem(s) above)."
+            )
+        state = bundle.load_state()
+        state.status = "validated"
+        state.validated_at = utc_now_iso()
+        state.image_tag = tag
+        state.image_digest = docker.image_id(tag)
+        bundle.save_state(state)
+        rec.log(f"baseline contract holds ({len(results)} tests x{attempts})")
+        console.print(
+            f"[green]Baseline contract holds[/green] for [bold]{bundle.spec.id}[/bold]: "
+            f"all pass2pass pass, all fail2pass fail (x{attempts} consistent)."
         )
-    state = bundle.load_state()
-    state.status = "validated"
-    state.validated_at = utc_now_iso()
-    state.image_tag = tag
-    state.image_digest = docker.image_id(tag)
-    bundle.save_state(state)
-    console.print(
-        f"[green]Baseline contract holds[/green] for [bold]{bundle.spec.id}[/bold]: "
-        f"all pass2pass pass, all fail2pass fail (x{attempts} consistent)."
-    )
+
+
+@app.command()
+def logs(
+    command_id: Annotated[
+        str | None, typer.Argument(help="Command id to inspect; omit to list recent commands.")
+    ] = None,
+    limit: Annotated[int, typer.Option(help="How many recent commands to list.")] = 20,
+) -> None:
+    """Show the log, test results, and artifacts recorded for a CLI command."""
+    db = Database(settings.db_path)
+    try:
+        if command_id is None:
+            rows = db.recent_commands(limit)
+            if not rows:
+                console.print(f"No commands recorded yet in {settings.db_path}.")
+                return
+            table = Table(title=f"Recent commands ({settings.db_path})")
+            for col in ("id", "name", "exit", "started at", "bundle"):
+                table.add_column(col)
+            for row in rows:
+                exit_code = row["exit_code"]
+                style = "green" if exit_code == 0 else "red"
+                table.add_row(
+                    row["id"],
+                    row["name"],
+                    f"[{style}]{exit_code}[/{style}]" if exit_code is not None else "?",
+                    row["started_at"],
+                    row["bundle_path"] or "-",
+                )
+            console.print(table)
+            return
+
+        cmd = db.get_command(command_id)
+        if cmd is None:
+            raise TaskError(
+                f"No command {command_id!r} in {settings.db_path}. "
+                "Run `task logs` (no argument) to list recent command ids."
+            )
+        console.print(f"[bold]{cmd['name']}[/bold] {cmd['id']}")
+        console.print(f"  argv:     {' '.join(json.loads(cmd['argv']))}")
+        console.print(f"  bundle:   {cmd['bundle_path'] or '-'}")
+        console.print(f"  started:  {cmd['started_at']}")
+        console.print(f"  finished: {cmd['finished_at']} (exit {cmd['exit_code']})")
+
+        test_rows = db.test_results_for(command_id=command_id)
+        if test_rows:
+            table = Table(title="Test results")
+            for col in ("test", "bucket", "phase", "attempt", "status", "duration (s)"):
+                table.add_column(col)
+            for t in test_rows:
+                style = "green" if t["status"] == "passed" else "red"
+                table.add_row(
+                    t["test_name"],
+                    t["bucket"],
+                    t["phase"],
+                    str(t["attempt"]),
+                    f"[{style}]{t['status']}[/{style}]",
+                    f"{t['duration_seconds']:.2f}",
+                )
+            console.print(table)
+
+        for art in db.artifacts_for(command_id):
+            console.print(f"  artifact ({art['type']}): {art['path']}")
+        log_path = Path(cmd["log_path"]) if cmd["log_path"] else None
+        if log_path and log_path.is_file():
+            console.print(f"\n[bold]command.log[/bold] ({log_path}):")
+            console.print(log_path.read_text().rstrip() or "(empty)")
+    finally:
+        db.close()
+
+
+@runs_app.command("list")
+def runs_list(
+    limit: Annotated[int, typer.Option(help="How many runs to list.")] = 50,
+) -> None:
+    """List past solver runs (newest first)."""
+    db = Database(settings.db_path)
+    try:
+        rows = db.list_runs(limit)
+        if not rows:
+            console.print(
+                f"No runs recorded yet in {settings.db_path}. "
+                "Runs are created by `task run` (milestone 4)."
+            )
+            return
+        table = Table(title="Solver runs")
+        for col in ("id", "task", "solver", "model", "verdict", "started at"):
+            table.add_column(col)
+        for row in rows:
+            verdict = row["verdict"] or "?"
+            style = "green" if verdict == "RESOLVED" else "red"
+            table.add_row(
+                row["id"],
+                row["task_id"],
+                row["solver"],
+                row["model"] or "-",
+                f"[{style}]{verdict}[/{style}]",
+                row["started_at"],
+            )
+        console.print(table)
+    finally:
+        db.close()
+
+
+@runs_app.command("show")
+def runs_show(run_id: Annotated[str, typer.Argument(help="Run id to inspect.")]) -> None:
+    """Show one run: metadata, per-phase test results, and artifacts."""
+    db = Database(settings.db_path)
+    try:
+        row = db.get_run(run_id)
+        if row is None:
+            raise TaskError(
+                f"No run {run_id!r} in {settings.db_path}. Use `task runs list` to see ids."
+            )
+        console.print(f"[bold]run[/bold] {row['id']} (command {row['command_id']})")
+        for key in ("task_id", "solver", "model", "verdict", "started_at", "finished_at"):
+            console.print(f"  {key}: {row[key] or '-'}")
+        if row["cost_usd"] is not None:
+            console.print(
+                f"  tokens: {row['input_tokens']} in / {row['output_tokens']} out "
+                f"(${row['cost_usd']:.4f})"
+            )
+        console.print(f"  image: {row['image_tag']} ({row['image_digest']})")
+
+        test_rows = db.test_results_for(run_id=run_id)
+        if test_rows:
+            table = Table(title="Test results")
+            for col in ("test", "bucket", "phase", "attempt", "status"):
+                table.add_column(col)
+            for t in test_rows:
+                style = "green" if t["status"] == "passed" else "red"
+                table.add_row(
+                    t["test_name"],
+                    t["bucket"],
+                    t["phase"],
+                    str(t["attempt"]),
+                    f"[{style}]{t['status']}[/{style}]",
+                )
+            console.print(table)
+    finally:
+        db.close()
 
 
 def main() -> None:

@@ -22,6 +22,15 @@ def docker_available() -> bool:
     return proc.returncode == 0
 
 
+@pytest.fixture(autouse=True)
+def isolated_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point every CLI invocation at a per-test DB/artifacts dir (never ~/.task-bundle)."""
+    db = tmp_path / "task.db"
+    monkeypatch.setenv("TASK_BUNDLE_DB", str(db))
+    monkeypatch.setenv("TASK_BUNDLE_ARTIFACTS", str(tmp_path / "artifacts"))
+    return db
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     if docker_available():
         return

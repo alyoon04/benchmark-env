@@ -5,8 +5,8 @@
 - [x] 0. Design docs (DESIGN.md, PROGRESS.md) + spec sanity check with reviewer
 - [x] 1. Bundle spec + `task init` (scaffold, clone at pinned SHA)
 - [x] 2. Container build + `task validate` (image build + smoke test, hidden-test staging, 3× flake detection)
-- [ ] 3. SQLite logging + `task logs` / `task runs list|show` ← **next**
-- [ ] 4. `task run` with StubSolver (two-phase run, grading, JSON report)
+- [x] 3. SQLite logging + `task logs` / `task runs list|show`
+- [ ] 4. `task run` with StubSolver (two-phase run, grading, JSON report) ← **next**
 - [ ] 5. `task run` with ClaudeSolver (agentic loop, capped)
 - [ ] 6. End-to-end on real SWE-bench Pro instance (`task import-swebench`)
 - [ ] 7. Extra commands: `verify-gold`, `diff`, `doctor`, `clean`
@@ -34,25 +34,31 @@
 | Example bundle repo = deterministic local origin (`examples/make_toy_origin.py`, fixed commit env → same SHA everywhere) + bundle-relative repo URLs | Committed example must be validatable offline on any machine without machine-specific paths |
 | Leak guard compares file *contents*, not names | Same-named test file with different content is legitimate (SWE-bench p2p); identical bytes under any name is a leak |
 | SWE-bench test-patch format: schema accepts it, but `validate` rejects it until M6 | Can't exercise it honestly without a real instance; clear error instead of untested code |
+| Every command wrapped in `record_command` context manager (insert at start, exit code in `finally`) | Crashes still leave a queryable row; ids printed after every command |
+| DB/artifacts default to `~/.task-bundle/`, overridable via `--db`/`--artifacts-dir` or `TASK_BUNDLE_DB`/`TASK_BUNDLE_ARTIFACTS` env | Tests isolate via env (autouse fixture); collaborators share one machine-local DB by default |
+| Ids = ms-hex timestamp + random suffix (no ulid dep) | Time-sortable, collision-safe, zero deps |
+| `artifacts.py` folded into `CommandRecord.save_artifact` + `db.add_artifact` | Too small to justify a module; DESIGN.md layout deviation noted here |
+| Per-attempt rows in test_results (not just consolidated) | Flake patterns are visible later via `task logs <id>` |
 
 ## Current state
 
-Milestone 2 complete and hand-verified: `task init` now builds + smoke-tests the
-task image (content-hash cached); `task validate` stages hidden tests via docker cp
-into fresh hardened containers, runs each suite 3×, flags flakes, and reports
-contract violations with specific messages (exit 2). Example bundle
-`examples/toy-calc` validates end-to-end offline. 64 tests (3 docker-marked,
-auto-skip without a daemon), ruff + mypy --strict clean. Awaiting reviewer approval
-before milestone 3.
+Milestone 3 complete and hand-verified: every CLI invocation writes a `commands`
+row (argv, timestamps, exit code — recorded even on crash via context-manager
+`finally`) and prints its command id. `task validate` persists per-attempt
+test_results rows and a full test-output artifact; `task init` saves the image
+build log. `task logs` lists recent commands or shows one command's metadata,
+test-results table, artifacts, and on-disk log. `task runs list|show` are wired
+(runs rows arrive with `task run` in M4). DB schema includes the full `runs`
+table + repository methods ready for M4. 74 tests, ruff + mypy --strict clean.
+Awaiting reviewer approval before milestone 4.
 
-Modules: `bundle.py`, `workspace.py` (+clean-tree builder, content leak guard),
-`container.py` (docker primitives), `harness.py` (image/staging/suite orchestration),
-`grading.py` (pure consolidate + contract check), `cli.py` (`init`, `validate`),
-`errors.py`.
+Modules: `bundle.py`, `workspace.py`, `container.py`, `harness.py`, `grading.py`,
+`db.py` (sqlite repository), `cli.py` (`init`, `validate`, `logs`, `runs`), `errors.py`.
 
-## Next steps (milestone 3)
+## Next steps (milestone 4)
 
-1. `db.py`: sqlite3 repository layer (commands/runs/test_results/artifacts per DESIGN.md §6).
-2. Command-logging context manager wired into every CLI command (records even on crash).
-3. `artifacts.py`: artifact dirs under `artifacts/<command-id>/` (build log, test output).
-4. `task logs <command-id>`, `task runs list`, `task runs show <run-id>` with rich tables.
+1. `solver/base.py` Solver protocol + `solver/stub.py` (applies provided patch or no-op).
+2. Two-phase `task run`: solver workspace (hidden tests absent, leak guard pre-flight)
+   → diff snapshot → fresh eval container → staged hidden tests → grade.
+3. `grading.py`: run verdict (RESOLVED ⇔ all f2p pass AND all p2p pass post-solver).
+4. `report.py`: stable-ordered JSON report; runs/test_results/artifacts rows per DESIGN.md.
