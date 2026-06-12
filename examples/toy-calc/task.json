@@ -1,0 +1,31 @@
+{
+  "environment": {
+    "base_image": "python:3.11-slim",
+    "env": {
+      "PYTHONDONTWRITEBYTECODE": "1"
+    },
+    "network_during_setup": true,
+    "setup_commands": [
+      "pip install --no-cache-dir pytest"
+    ]
+  },
+  "id": "toy-calc",
+  "language": "python",
+  "repo": {
+    "commit": "b68ea5b2e5859e605c6eca178e581af216dba897",
+    "url": "../.origin"
+  },
+  "schema_version": 1,
+  "solver": {
+    "workspace_excludes": []
+  },
+  "tests": {
+    "command_template": "python -m pytest {test_path} -x -q",
+    "fail2pass_ids": [],
+    "pass2pass_ids": [],
+    "staging_dir": "tests/",
+    "test_patch": null,
+    "timeout_seconds": 120,
+    "visible_test_paths": []
+  }
+}

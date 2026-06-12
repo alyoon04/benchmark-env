@@ -1,0 +1,8 @@
+--- a/calc.py
++++ b/calc.py
+@@ -14,4 +14,4 @@
+ 
+ 
+ def divide(a: float, b: float) -> float:
+-    return a * b
++    return a / b
