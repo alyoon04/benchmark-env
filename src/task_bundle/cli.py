@@ -25,6 +25,9 @@ from task_bundle.db import Database, new_id
 from task_bundle.errors import ContractViolation, TaskError
 from task_bundle.grading import FLAKY, TestExecution, check_baseline_contract, consolidate
 from task_bundle.harness import ensure_image, run_baseline_suites, smoke_test
+from task_bundle.report import build_report, tool_versions, write_report
+from task_bundle.run import execute_run
+from task_bundle.solver import Solver, StubSolver
 from task_bundle.workspace import clone_at_commit, resolve_repo_url
 
 app = typer.Typer(
@@ -297,6 +300,136 @@ def validate(
             f"[green]Baseline contract holds[/green] for [bold]{bundle.spec.id}[/bold]: "
             f"all pass2pass pass, all fail2pass fail (x{attempts} consistent)."
         )
+
+
+def _make_solver(name: str, bundle: Bundle, patch: Path | None, gold: bool) -> Solver:
+    """Resolve --solver/--patch/--gold flags into a Solver instance."""
+    if name == "claude":
+        raise TaskError("The claude solver lands in milestone 5; use --solver stub for now.")
+    if name != "stub":
+        raise TaskError(f"Unknown solver {name!r}. Available: stub (claude arrives in M5).")
+    if patch and gold:
+        raise TaskError("Pass either --patch or --gold, not both.")
+    if gold:
+        patch = bundle.gold_patch_path
+        if not patch.is_file():
+            raise TaskError(
+                f"--gold requires a golden patch at {patch}, but none exists. "
+                "Add patch.diff to the bundle or pass --patch <file>."
+            )
+    if patch and not patch.is_file():
+        raise TaskError(f"Patch file {patch} does not exist.")
+    return StubSolver(patch)
+
+
+@app.command()
+def run(
+    bundle_path: Annotated[Path, typer.Argument(help="Bundle directory to run a solver on.")],
+    solver: Annotated[
+        str, typer.Option(help='Solver to use: "stub" (deterministic) or "claude" (M5).')
+    ] = "stub",
+    patch: Annotated[
+        Path | None, typer.Option(help="Patch the stub solver applies to the workspace.")
+    ] = None,
+    gold: Annotated[
+        bool, typer.Option(help="Shorthand: stub applies the bundle's golden patch.diff.")
+    ] = False,
+    rebuild: Annotated[bool, typer.Option(help="Force an image rebuild even if cached.")] = False,
+) -> None:
+    """Run a solver against the task, then grade it with the hidden tests.
+
+    Two-phase: the solver works on a workspace with no hidden tests (verified by a
+    content leak guard), then its diff is graded in a fresh evaluation container.
+    Verdict is RESOLVED only if all fail2pass tests now pass AND all pass2pass tests
+    still pass. Emits a JSON report and records the run in SQLite.
+    """
+    with record_command("run", bundle_path) as rec:
+        bundle = Bundle.load(bundle_path)
+        bundle.test_format()
+        solver_obj = _make_solver(solver, bundle, patch, gold)
+        docker = Docker()
+        docker.ensure_available()
+        with console.status("Ensuring task image..."):
+            tag, build_log = ensure_image(docker, bundle, rebuild=rebuild)
+        if build_log:
+            rec.save_artifact("build_log", "image_build.log", build_log)
+
+        run_id = new_id("run")
+        versions = tool_versions(docker)
+        digest = docker.image_id(tag)
+        rec.db.insert_run(
+            run_id,
+            rec.command_id,
+            str(bundle.spec.id),
+            solver_obj.name,
+            solver_obj.model,
+            utc_now_iso(),
+            tag,
+            digest,
+            json.dumps(versions, sort_keys=True),
+        )
+        rec.log(f"run {run_id} started (solver={solver_obj.name})")
+        try:
+            with console.status("Running baseline -> solve -> grade phases..."):
+                outcome = execute_run(docker, bundle, tag, solver_obj, rec.artifact_dir)
+        except BaseException:
+            rec.db.finish_run(run_id, "ERROR", utc_now_iso())
+            rec.log(f"run {run_id} errored")
+            raise
+        rec.db.record_test_results(rec.command_id, "baseline", outcome.baseline, run_id=run_id)
+        rec.db.record_test_results(
+            rec.command_id, "post_solver", outcome.post_solver, run_id=run_id
+        )
+        rec.db.finish_run(
+            run_id,
+            outcome.verdict,
+            utc_now_iso(),
+            outcome.solve.input_tokens,
+            outcome.solve.output_tokens,
+            outcome.solve.cost_usd,
+        )
+        rec.save_artifact("solver_diff", "solver.diff", outcome.diff)
+        rec.save_artifact("solver_transcript", "transcript.txt", outcome.solve.transcript)
+        rec.save_artifact(
+            "test_output",
+            "run_tests.txt",
+            "\n".join(
+                f"=== {e.test} [{e.bucket}] {phase}: {e.status} ===\n{e.output}"
+                for phase, execs in (
+                    ("baseline", outcome.baseline),
+                    ("post_solver", outcome.post_solver),
+                )
+                for e in execs
+            ),
+        )
+        report = build_report(
+            run_id, rec.command_id, bundle, solver_obj, outcome, tag, digest, versions
+        )
+        report_path = rec.artifact_dir / "report.json"
+        write_report(report_path, report)
+        rec.db.add_artifact(rec.command_id, "report", str(report_path), run_id=run_id)
+
+        baseline_status = {e.test: e.status for e in outcome.baseline}
+        table = Table(title=f"Run {run_id}: {bundle.spec.id} ({solver_obj.name})")
+        table.add_column("Test")
+        table.add_column("Bucket")
+        table.add_column("Before")
+        table.add_column("After")
+        for r in outcome.results:
+            after_ok = r.status == "passed"
+            style = "green" if after_ok else "red"
+            table.add_row(
+                r.test,
+                r.bucket,
+                baseline_status.get(r.test, "?"),
+                f"[{style}]{r.status}[/{style}]",
+            )
+        console.print(table)
+        verdict_style = "bold green" if outcome.verdict == "RESOLVED" else "bold red"
+        console.print(f"verdict: [{verdict_style}]{outcome.verdict}[/{verdict_style}]")
+        rec.log(f"run {run_id} verdict: {outcome.verdict}")
+        console.print(f"report: {report_path}")
+        console.print(f"[dim]run id: {run_id} (task runs show {run_id})[/dim]")
 
 
 @app.command()

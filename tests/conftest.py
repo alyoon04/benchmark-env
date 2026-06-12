@@ -10,6 +10,12 @@ from functools import cache
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
+
+from task_bundle.bundle import Bundle
+from task_bundle.cli import app
+
+_runner = CliRunner()
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -80,3 +86,61 @@ def toy_origin(tmp_path: Path) -> tuple[str, str, str]:
     git(["commit", "--quiet", "-m", "follow-up commit"], cwd=origin)
     followup_sha = git(["rev-parse", "HEAD"], cwd=origin)
     return origin.as_uri(), baseline_sha, followup_sha
+
+
+SETUP_PIP_PYTEST = ["pip install --no-cache-dir pytest"]
+PYTEST_CMD = "python -m pytest {test_path} -x -q"
+
+F2P_TEST = """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from calc import divide
+
+
+def test_divide() -> None:
+    assert divide(6, 3) == 2
+"""
+
+P2P_TEST = """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from calc import add
+
+
+def test_add() -> None:
+    assert add(2, 3) == 5
+"""
+
+
+@pytest.fixture(scope="session")
+def shared_origin(tmp_path_factory: pytest.TempPathFactory) -> tuple[str, str]:
+    origin = tmp_path_factory.mktemp("origin") / "toy"
+    shutil.copytree(FIXTURES / "toy_repo", origin)
+    git(["init", "--quiet", "--initial-branch=main"], cwd=origin)
+    git(["config", "uploadpack.allowReachableSHA1InWant", "true"], cwd=origin)
+    git(["add", "-A"], cwd=origin)
+    git(["commit", "--quiet", "-m", "baseline"], cwd=origin)
+    return origin.as_uri(), git(["rev-parse", "HEAD"], cwd=origin)
+
+
+def make_initialized_bundle(path: Path, origin: tuple[str, str], *, f2p: str, p2p: str) -> Bundle:
+    url, sha = origin
+    bundle = Bundle.scaffold(
+        path,
+        repo_url=url,
+        commit=sha,
+        base_image="python:3.11-slim",
+        test_command=PYTEST_CMD,
+        setup_commands=SETUP_PIP_PYTEST,
+    )
+    (bundle.fail2pass_dir / "test_f2p.py").write_text(f2p)
+    (bundle.pass2pass_dir / "test_p2p.py").write_text(p2p)
+    result = _runner.invoke(app, ["init", str(path)])
+    assert result.exit_code == 0, result.output
+    return bundle

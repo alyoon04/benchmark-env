@@ -161,8 +161,12 @@ class Docker:
             duration_seconds=time.monotonic() - start,
         )
 
-    def cp_in(self, container_id: str, src: Path, dest: str) -> None:
-        """Copy a host file/dir into the container (arrives root-owned; chown after)."""
+    def cp_in(self, container_id: str, src: Path | str, dest: str) -> None:
+        """Copy a host file/dir into the container (arrives root-owned; chown after).
+
+        ``src`` may be a raw string ending in ``/.`` to copy a directory's *contents*
+        (pathlib would normalize that suffix away, changing docker cp semantics).
+        """
         proc = _docker(["cp", str(src), f"{container_id}:{dest}"], timeout=300)
         if proc.returncode != 0:
             raise DockerError(f"docker cp {src} -> {dest} failed: {proc.stderr.strip()}")

@@ -6,8 +6,8 @@
 - [x] 1. Bundle spec + `task init` (scaffold, clone at pinned SHA)
 - [x] 2. Container build + `task validate` (image build + smoke test, hidden-test staging, 3× flake detection)
 - [x] 3. SQLite logging + `task logs` / `task runs list|show`
-- [ ] 4. `task run` with StubSolver (two-phase run, grading, JSON report) ← **next**
-- [ ] 5. `task run` with ClaudeSolver (agentic loop, capped)
+- [x] 4. `task run` with StubSolver (two-phase run, grading, JSON report)
+- [ ] 5. `task run` with ClaudeSolver (agentic loop, capped) ← **next**
 - [ ] 6. End-to-end on real SWE-bench Pro instance (`task import-swebench`)
 - [ ] 7. Extra commands: `verify-gold`, `diff`, `doctor`, `clean`
 - [ ] 8. Polish: README, DESIGN_NOTES.md, CI, final checklist
@@ -39,26 +39,31 @@
 | Ids = ms-hex timestamp + random suffix (no ulid dep) | Time-sortable, collision-safe, zero deps |
 | `artifacts.py` folded into `CommandRecord.save_artifact` + `db.add_artifact` | Too small to justify a module; DESIGN.md layout deviation noted here |
 | Per-attempt rows in test_results (not just consolidated) | Flake patterns are visible later via `task logs <id>` |
+| Solvers mutate a workspace tree; orchestrator snapshots (host-only .git) and diffs | Solvers never produce patches; uniform diff capture for stub and LLM solvers |
+| Grade phase = wipe /workspace + docker-cp the solved tree (no in-container patch tooling) | Language-agnostic (no git/patch needed in image); handles file deletions; `cp src/.` string preserved (pathlib strips `/.` — caused a real bug) |
+| Baseline suites re-run once inside `task run` | Honest per-test before/after in one report without trusting stale validate state |
+| Completed run exits 0 regardless of verdict | UNRESOLVED is data, not a CLI failure; ERROR verdict + nonzero exit reserved for infra failures |
+| run.py is DB-free; CLI persists RunOutcome | Orchestration testable without sqlite; single write path |
 
 ## Current state
 
-Milestone 3 complete and hand-verified: every CLI invocation writes a `commands`
-row (argv, timestamps, exit code — recorded even on crash via context-manager
-`finally`) and prints its command id. `task validate` persists per-attempt
-test_results rows and a full test-output artifact; `task init` saves the image
-build log. `task logs` lists recent commands or shows one command's metadata,
-test-results table, artifacts, and on-disk log. `task runs list|show` are wired
-(runs rows arrive with `task run` in M4). DB schema includes the full `runs`
-table + repository methods ready for M4. 74 tests, ruff + mypy --strict clean.
-Awaiting reviewer approval before milestone 4.
+Milestone 4 complete and hand-verified: `task run --solver stub [--patch F|--gold]`
+runs baseline -> solve -> grade in separate containers, enforces the leak guard on
+the solver workspace, captures the diff via host-side git snapshot, grades with
+SWE-bench semantics (run_verdict table-tested), writes a sorted-key report.json +
+solver.diff/transcript artifacts, and records runs/test_results rows. Gold patch ->
+RESOLVED, no-op -> UNRESOLVED proven in docker tests and by hand on examples/toy-calc.
+91 tests, ruff + mypy --strict clean. Awaiting approval before milestone 5.
 
-Modules: `bundle.py`, `workspace.py`, `container.py`, `harness.py`, `grading.py`,
-`db.py` (sqlite repository), `cli.py` (`init`, `validate`, `logs`, `runs`), `errors.py`.
+Modules added: `solver/` (base protocol, stub), `run.py` (two-phase orchestration,
+DB-free), `report.py` (tool versions + deterministic JSON). Shared docker test
+fixtures moved to conftest (session-scoped origin).
 
-## Next steps (milestone 4)
+## Next steps (milestone 5)
 
-1. `solver/base.py` Solver protocol + `solver/stub.py` (applies provided patch or no-op).
-2. Two-phase `task run`: solver workspace (hidden tests absent, leak guard pre-flight)
-   → diff snapshot → fresh eval container → staged hidden tests → grade.
-3. `grading.py`: run verdict (RESOLVED ⇔ all f2p pass AND all p2p pass post-solver).
-4. `report.py`: stable-ordered JSON report; runs/test_results/artifacts rows per DESIGN.md.
+1. `solver/claude.py`: agentic loop via anthropic SDK — tools list_dir/read_file/
+   write_file/run_command executed against the solver workspace + a solver container
+   (network off); caps on iterations/tokens/wall-clock.
+2. `--solver claude --model ...` wiring (env ANTHROPIC_MODEL, default claude-opus-4-7).
+3. Token/cost accounting into runs row + report stats.
+4. Requires ANTHROPIC_API_KEY from the user at runtime.

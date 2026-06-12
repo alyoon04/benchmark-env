@@ -6,18 +6,34 @@ shallow (``fetch --depth 1 <sha>``) so the checkout cannot contain future commit
 defense in depth for the test-hiding invariant, and faster besides.
 """
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
 
 from task_bundle.errors import GitError, HiddenTestLeak
 
+_SNAPSHOT_ENV = {
+    "GIT_CONFIG_GLOBAL": "/dev/null",
+    "GIT_CONFIG_SYSTEM": "/dev/null",
+    "GIT_AUTHOR_NAME": "task-bundle",
+    "GIT_AUTHOR_EMAIL": "task-bundle@localhost",
+    "GIT_COMMITTER_NAME": "task-bundle",
+    "GIT_COMMITTER_EMAIL": "task-bundle@localhost",
+}
 
-def _git(args: list[str], cwd: Path, timeout: int = 600) -> str:
+
+def _git(args: list[str], cwd: Path, timeout: int = 600, env: dict[str, str] | None = None) -> str:
     cmd = ["git", *args]
     try:
         proc = subprocess.run(
-            cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+            env={**os.environ, **env} if env else None,
         )
     except FileNotFoundError as e:
         raise GitError("git executable not found on PATH. Install git and retry.") from e
@@ -95,6 +111,35 @@ def build_clean_tree(workspace: Path, dest: Path, excludes: list[str] | None = N
         return {n for n in names if (Path(directory) / n).resolve() in excluded_abs}
 
     shutil.copytree(workspace, dest, ignore=_ignore, symlinks=True)
+
+
+def snapshot_tree(tree: Path) -> None:
+    """Init an orchestrator-side git repo in ``tree`` and commit its current state.
+
+    Used to capture the solver's diff afterwards. This .git exists only on the host;
+    trees sent into containers are rebuilt without it (build_clean_tree).
+    """
+    _git(["init", "--quiet"], cwd=tree, env=_SNAPSHOT_ENV)
+    _git(["add", "-A"], cwd=tree, env=_SNAPSHOT_ENV)
+    _git(["commit", "--quiet", "--allow-empty", "-m", "pre-solver snapshot"], cwd=tree,
+         env=_SNAPSHOT_ENV)  # fmt: skip
+
+
+def capture_diff(tree: Path) -> str:
+    """Unified diff of everything the solver changed since ``snapshot_tree``."""
+    _git(["add", "-A"], cwd=tree, env=_SNAPSHOT_ENV)
+    return _git(["diff", "--cached", "--no-color"], cwd=tree, env=_SNAPSHOT_ENV)
+
+
+def apply_patch(tree: Path, patch: Path) -> None:
+    """Apply a unified diff to ``tree`` (used by StubSolver and verify-gold)."""
+    try:
+        _git(["apply", "--whitespace=nowarn", str(patch)], cwd=tree)
+    except GitError as e:
+        raise GitError(
+            f"Patch {patch} does not apply cleanly to the workspace: {e}\n"
+            "Was it generated against the pinned commit?"
+        ) from e
 
 
 def assert_no_hidden_content(tree: Path, hidden_files: list[Path]) -> None:

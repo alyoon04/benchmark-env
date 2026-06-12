@@ -9,6 +9,7 @@ from task_bundle.grading import (
     TestExecution,
     check_baseline_contract,
     consolidate,
+    run_verdict,
 )
 
 
@@ -89,3 +90,30 @@ class TestBaselineContract:
             "p1", "pass2pass", ["failed"] * 3
         )
         assert len(check_baseline_contract(consolidate(executions))) == 2
+
+
+# (f2p statuses, p2p statuses) -> verdict
+VERDICT_TABLE: list[tuple[list[Status], list[Status], str]] = [
+    (["passed", "passed"], ["passed"], "RESOLVED"),
+    (["passed"], [], "RESOLVED"),  # no p2p tests defined
+    (["passed", "failed"], ["passed"], "UNRESOLVED"),  # one f2p still failing
+    (["passed"], ["failed"], "UNRESOLVED"),  # regression in p2p
+    (["failed"], ["passed"], "UNRESOLVED"),  # no-op solver
+    (["passed"], ["timeout"], "UNRESOLVED"),
+    (["timeout"], ["passed"], "UNRESOLVED"),
+    (["error"], ["passed"], "UNRESOLVED"),
+    ([], ["passed"], "UNRESOLVED"),  # no f2p tests -> nothing proven
+]
+
+
+class TestRunVerdict:
+    @pytest.mark.parametrize(("f2p", "p2p", "expected"), VERDICT_TABLE)
+    def test_verdict_table(self, f2p: list[Status], p2p: list[Status], expected: str) -> None:
+        executions = [e for i, s in enumerate(f2p) for e in execs(f"f{i}", "fail2pass", [s])] + [
+            e for i, s in enumerate(p2p) for e in execs(f"p{i}", "pass2pass", [s])
+        ]
+        assert run_verdict(consolidate(executions)) == expected
+
+    def test_flaky_post_solver_is_unresolved(self) -> None:
+        results = consolidate(execs("f0", "fail2pass", ["passed", "failed"]))
+        assert run_verdict(results) == "UNRESOLVED"

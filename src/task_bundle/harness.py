@@ -134,6 +134,29 @@ def stage_hidden_tests(docker: Docker, bundle: Bundle, container_id: str) -> dic
     return staged
 
 
+def execute_staged_suite(
+    docker: Docker, bundle: Bundle, container_id: str, *, attempt: int = 1
+) -> list[TestExecution]:
+    """Stage hidden tests into ``container_id`` and execute each once."""
+    spec = bundle.spec.tests
+    executions = []
+    for test_path, bucket in stage_hidden_tests(docker, bundle, container_id).items():
+        command = spec.command_template.format(test_path=shlex.quote(test_path))
+        result = docker.exec(container_id, command, timeout=spec.timeout_seconds)
+        status: Status = "timeout" if result.timed_out else "passed" if result.ok else "failed"
+        executions.append(
+            TestExecution(
+                test=test_path,
+                bucket=bucket,
+                attempt=attempt,
+                status=status,
+                duration_seconds=round(result.duration_seconds, 3),
+                output=result.output,
+            )
+        )
+    return executions
+
+
 def run_baseline_suites(
     docker: Docker, bundle: Bundle, tag: str, *, attempts: int = BASELINE_ATTEMPTS
 ) -> list[TestExecution]:
@@ -142,28 +165,22 @@ def run_baseline_suites(
     Fresh containers per attempt so state mutated by one run (caches, temp files)
     cannot mask or cause flakiness in the next.
     """
-    spec = bundle.spec.tests
     executions = []
     for attempt in range(1, attempts + 1):
         cid = docker.run_detached(tag)
         try:
-            staged = stage_hidden_tests(docker, bundle, cid)
-            for test_path, bucket in staged.items():
-                command = spec.command_template.format(test_path=shlex.quote(test_path))
-                result = docker.exec(cid, command, timeout=spec.timeout_seconds)
-                status: Status = (
-                    "timeout" if result.timed_out else "passed" if result.ok else "failed"
-                )
-                executions.append(
-                    TestExecution(
-                        test=test_path,
-                        bucket=bucket,
-                        attempt=attempt,
-                        status=status,
-                        duration_seconds=round(result.duration_seconds, 3),
-                        output=result.output,
-                    )
-                )
+            executions.extend(execute_staged_suite(docker, bundle, cid, attempt=attempt))
         finally:
             docker.rm_force(cid)
     return executions
+
+
+def overlay_tree_into_container(docker: Docker, tree: Path, container_id: str) -> None:
+    """Replace the container's /workspace contents with ``tree`` (handles deletions).
+
+    Wipe-then-copy rather than patch-apply: no patch tooling is required inside the
+    image (language-agnostic), and files the solver deleted actually disappear.
+    """
+    docker.exec(container_id, f"find {WORKDIR} -mindepth 1 -delete", timeout=120, user="0")
+    docker.cp_in(container_id, f"{tree}/.", f"{WORKDIR}/")
+    docker.exec(container_id, f"chown -R 1000:1000 {WORKDIR}", timeout=120, user="0")

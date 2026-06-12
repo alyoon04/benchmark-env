@@ -54,6 +54,20 @@ def consolidate(executions: list[TestExecution]) -> list[ConsolidatedResult]:
     return results
 
 
+def run_verdict(post_solver: list[ConsolidatedResult]) -> Literal["RESOLVED", "UNRESOLVED"]:
+    """SWE-bench semantics: RESOLVED ⇔ every fail2pass test now passes AND every
+    pass2pass test still passes. Anything else — including an empty fail2pass set,
+    a flaky result, a timeout, or an error — is UNRESOLVED.
+    """
+    f2p = [r for r in post_solver if r.bucket == "fail2pass"]
+    p2p = [r for r in post_solver if r.bucket == "pass2pass"]
+    if not f2p:
+        return "UNRESOLVED"
+    if all(r.status == "passed" for r in f2p) and all(r.status == "passed" for r in p2p):
+        return "RESOLVED"
+    return "UNRESOLVED"
+
+
 def check_baseline_contract(results: list[ConsolidatedResult]) -> list[str]:
     """Return specific problem descriptions; empty list means the contract holds.
 
