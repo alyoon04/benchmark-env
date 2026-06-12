@@ -1,7 +1,0 @@
-{
-  "status": "validated",
-  "image_tag": "task-bundle/toy-calc:1688c76b9dee267c",
-  "image_digest": "sha256:f4ab12585314b9d7730d235310f8c6acb6ea0b6fe4e618e8c827f29bfd98b6df",
-  "initialized_at": "2026-06-12T04:19:17+00:00",
-  "validated_at": "2026-06-12T04:21:08+00:00"
-}
