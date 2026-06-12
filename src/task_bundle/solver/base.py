@@ -10,15 +10,24 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from task_bundle.container import Docker
+
 
 @dataclass
 class SolveContext:
-    """Everything a solver may see: the cleaned workspace and the problem statement."""
+    """Everything a solver may see: the cleaned workspace and the problem statement.
+
+    ``docker``/``image_tag`` let agentic solvers start a hardened container of the
+    task image and execute commands inside it; solver-controlled operations must
+    never run on the host.
+    """
 
     workspace: Path
     description: str
     test_command_template: str
     timeout_seconds: int
+    docker: Docker | None = None
+    image_tag: str | None = None
 
 
 @dataclass

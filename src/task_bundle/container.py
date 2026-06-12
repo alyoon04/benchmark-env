@@ -171,5 +171,11 @@ class Docker:
         if proc.returncode != 0:
             raise DockerError(f"docker cp {src} -> {dest} failed: {proc.stderr.strip()}")
 
+    def cp_out(self, container_id: str, src: str, dest: Path) -> None:
+        """Copy a file/dir out of the container (``src`` may end in ``/.`` for contents)."""
+        proc = _docker(["cp", f"{container_id}:{src}", str(dest)], timeout=300)
+        if proc.returncode != 0:
+            raise DockerError(f"docker cp {src} -> {dest} failed: {proc.stderr.strip()}")
+
     def rm_force(self, container_id: str) -> None:
         _docker(["rm", "-f", container_id], timeout=120)

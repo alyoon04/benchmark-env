@@ -71,8 +71,15 @@ def test_noop_solver_unresolved(
     assert ("tests/test_p2p.py", "passed") in statuses
 
 
-def test_claude_solver_not_yet_available(tmp_path: Path, shared_origin: tuple[str, str]) -> None:
+def test_claude_without_api_key_errors_and_marks_run(
+    tmp_path: Path,
+    shared_origin: tuple[str, str],
+    isolated_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     bundle = make_initialized_bundle(tmp_path / "b", shared_origin, f2p=F2P_TEST, p2p=P2P_TEST)
     result = runner.invoke(app, ["run", str(bundle.path), "--solver", "claude"])
     assert result.exit_code != 0
-    assert "milestone 5" in str(result.exception)
+    assert "ANTHROPIC_API_KEY" in str(result.exception)
+    assert Database(isolated_db).list_runs()[0]["verdict"] == "ERROR"

@@ -7,8 +7,8 @@ isolation — with every command logged to a queryable SQLite database.
 > **Status: work in progress.** Built in reviewable milestones; see
 > [PROGRESS.md](PROGRESS.md) for what exists today and [DESIGN.md](DESIGN.md) for the
 > full architecture. Currently implemented: bundle spec, `task init` (with image
-> build), `task validate`, `task run` (stub solver), and SQLite command logging
-> with `task logs` / `task runs`.
+> build), `task validate`, `task run` (stub + claude solvers), and SQLite command
+> logging with `task logs` / `task runs`.
 
 ## Why
 
@@ -103,6 +103,18 @@ structurally, not by convention (DESIGN.md §3):
 
 Tests outside the hidden buckets stay visible to the solver.
 
+## Solvers
+
+- **stub** — applies a provided `--patch` (or the bundle's golden patch via
+  `--gold`), or no-ops. Deterministic; used to prove the harness: gold ⇒ RESOLVED,
+  no-op ⇒ UNRESOLVED.
+- **claude** — an agentic loop over the Claude API (`--model`, default
+  `claude-opus-4-7` or `$ANTHROPIC_MODEL`; requires `ANTHROPIC_API_KEY`). The model
+  gets list_dir/read_file/write_file/run_command tools, all executed **inside the
+  hardened container** (network off, non-root) — solver-controlled code never runs
+  on the host. Budgets: `--max-iterations` (default 30), 30-minute wall clock,
+  bounded tool output. Tokens and estimated cost land in the run stats.
+
 ## Isolation model
 
 Task containers run with: no network (`--network none`; build-time network is on so
@@ -119,7 +131,7 @@ gets a fresh container so runs cannot contaminate each other.
 | `task validate <bundle> [--attempts N] [--rebuild]` | ✅ | Baseline contract: pass2pass all pass, fail2pass all fail; each suite runs 3× in fresh containers and flaky tests are flagged. Exit 2 with specific reasons on violation. |
 | `task logs [<command-id>]` | ✅ | No argument: list recent commands. With an id: show argv, exit code, per-test results, artifacts, and the command log. |
 | `task runs list` / `task runs show <run-id>` | ✅ | Query solver runs (populated by `task run`, milestone 4). |
-| `task run <bundle> [--solver stub] [--patch FILE \| --gold] [--rebuild]` | ✅ (stub) | Baseline → solve → grade in separate containers; before/after table, RESOLVED/UNRESOLVED verdict, sorted-key `report.json` + `solver.diff` artifacts, run recorded in DB. `--solver claude` lands in milestone 5. |
+| `task run <bundle> [--solver stub\|claude] [--patch FILE \| --gold] [--model M] [--max-iterations N] [--rebuild]` | ✅ | Baseline → solve → grade in separate containers; before/after table, RESOLVED/UNRESOLVED verdict, sorted-key `report.json` + `solver.diff`/transcript artifacts, run + token/cost stats recorded in DB. `claude` solver needs `ANTHROPIC_API_KEY`. |
 | `task import-swebench <instance-id>` | planned (M6) | Convert a SWE-bench Pro instance into a bundle. |
 | `task verify-gold` / `task diff` / `task doctor` / `task clean` | planned (M7) | Authoring and ops helpers. |
 

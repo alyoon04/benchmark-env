@@ -27,7 +27,7 @@ from task_bundle.grading import FLAKY, TestExecution, check_baseline_contract, c
 from task_bundle.harness import ensure_image, run_baseline_suites, smoke_test
 from task_bundle.report import build_report, tool_versions, write_report
 from task_bundle.run import execute_run
-from task_bundle.solver import Solver, StubSolver
+from task_bundle.solver import ClaudeSolver, Solver, StubSolver
 from task_bundle.workspace import clone_at_commit, resolve_repo_url
 
 app = typer.Typer(
@@ -302,12 +302,21 @@ def validate(
         )
 
 
-def _make_solver(name: str, bundle: Bundle, patch: Path | None, gold: bool) -> Solver:
-    """Resolve --solver/--patch/--gold flags into a Solver instance."""
+def _make_solver(
+    name: str,
+    bundle: Bundle,
+    patch: Path | None,
+    gold: bool,
+    model: str | None,
+    max_iterations: int,
+) -> Solver:
+    """Resolve --solver/--patch/--gold/--model flags into a Solver instance."""
     if name == "claude":
-        raise TaskError("The claude solver lands in milestone 5; use --solver stub for now.")
+        if patch or gold:
+            raise TaskError("--patch/--gold only apply to the stub solver.")
+        return ClaudeSolver(model=model, max_iterations=max_iterations)
     if name != "stub":
-        raise TaskError(f"Unknown solver {name!r}. Available: stub (claude arrives in M5).")
+        raise TaskError(f"Unknown solver {name!r}. Available: stub, claude.")
     if patch and gold:
         raise TaskError("Pass either --patch or --gold, not both.")
     if gold:
@@ -326,8 +335,15 @@ def _make_solver(name: str, bundle: Bundle, patch: Path | None, gold: bool) -> S
 def run(
     bundle_path: Annotated[Path, typer.Argument(help="Bundle directory to run a solver on.")],
     solver: Annotated[
-        str, typer.Option(help='Solver to use: "stub" (deterministic) or "claude" (M5).')
+        str, typer.Option(help='Solver to use: "stub" (deterministic) or "claude" (LLM).')
     ] = "stub",
+    model: Annotated[
+        str | None,
+        typer.Option(help="Model for the claude solver (default: $ANTHROPIC_MODEL or opus)."),
+    ] = None,
+    max_iterations: Annotated[
+        int, typer.Option(help="Iteration cap for the claude solver's agent loop.")
+    ] = 30,
     patch: Annotated[
         Path | None, typer.Option(help="Patch the stub solver applies to the workspace.")
     ] = None,
@@ -346,7 +362,7 @@ def run(
     with record_command("run", bundle_path) as rec:
         bundle = Bundle.load(bundle_path)
         bundle.test_format()
-        solver_obj = _make_solver(solver, bundle, patch, gold)
+        solver_obj = _make_solver(solver, bundle, patch, gold, model, max_iterations)
         docker = Docker()
         docker.ensure_available()
         with console.status("Ensuring task image..."):

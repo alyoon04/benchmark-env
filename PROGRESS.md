@@ -7,8 +7,8 @@
 - [x] 2. Container build + `task validate` (image build + smoke test, hidden-test staging, 3× flake detection)
 - [x] 3. SQLite logging + `task logs` / `task runs list|show`
 - [x] 4. `task run` with StubSolver (two-phase run, grading, JSON report)
-- [ ] 5. `task run` with ClaudeSolver (agentic loop, capped) ← **next**
-- [ ] 6. End-to-end on real SWE-bench Pro instance (`task import-swebench`)
+- [x] 5. `task run` with ClaudeSolver (agentic loop, capped)
+- [ ] 6. End-to-end on real SWE-bench Pro instance (`task import-swebench`) ← **next**
 - [ ] 7. Extra commands: `verify-gold`, `diff`, `doctor`, `clean`
 - [ ] 8. Polish: README, DESIGN_NOTES.md, CI, final checklist
 
@@ -44,26 +44,25 @@
 | Baseline suites re-run once inside `task run` | Honest per-test before/after in one report without trusting stale validate state |
 | Completed run exits 0 regardless of verdict | UNRESOLVED is data, not a CLI failure; ERROR verdict + nonzero exit reserved for infra failures |
 | run.py is DB-free; CLI persists RunOutcome | Orchestration testable without sqlite; single write path |
+| ClaudeSolver tools (list_dir/read_file/write_file/run_command) all execute inside the hardened container; host workspace synced out only after the loop | Solver-controlled code never touches the host; isolation story is uniform |
+| write_file via host tempfile + docker cp, not shell heredoc | No quoting pitfalls with arbitrary model content |
+| Model paths confined by _safe_path (normpath under /workspace, .. rejected) | Tool layer tidiness on top of container confinement |
+| ClaudeSolver budgets: max_iterations (30), wall-clock (1800s), per-call max_tokens, tool-output truncation | Bounded cost/time even on runaway loops |
+| API client injected via protocol; scripted fake drives the real-container docker test | Full loop tested deterministically; live API only for hand verification |
 
 ## Current state
 
-Milestone 4 complete and hand-verified: `task run --solver stub [--patch F|--gold]`
-runs baseline -> solve -> grade in separate containers, enforces the leak guard on
-the solver workspace, captures the diff via host-side git snapshot, grades with
-SWE-bench semantics (run_verdict table-tested), writes a sorted-key report.json +
-solver.diff/transcript artifacts, and records runs/test_results rows. Gold patch ->
-RESOLVED, no-op -> UNRESOLVED proven in docker tests and by hand on examples/toy-calc.
-91 tests, ruff + mypy --strict clean. Awaiting approval before milestone 5.
+Milestone 5 complete (live hand-test pending API key): `task run --solver claude
+[--model M] [--max-iterations N]` runs the agentic loop — tools execute in the
+hardened container, workspace syncs out for diffing, tokens/cost recorded in the
+runs row and report stats. Missing-key and ERROR-verdict paths covered. 92 tests
+(7 docker-marked incl. a scripted-client full-loop test), ruff + mypy --strict clean.
 
-Modules added: `solver/` (base protocol, stub), `run.py` (two-phase orchestration,
-DB-free), `report.py` (tool versions + deterministic JSON). Shared docker test
-fixtures moved to conftest (session-scoped origin).
+## Next steps (milestone 6)
 
-## Next steps (milestone 5)
-
-1. `solver/claude.py`: agentic loop via anthropic SDK — tools list_dir/read_file/
-   write_file/run_command executed against the solver workspace + a solver container
-   (network off); caps on iterations/tokens/wall-clock.
-2. `--solver claude --model ...` wiring (env ANTHROPIC_MODEL, default claude-opus-4-7).
-3. Token/cost accounting into runs row + report stats.
-4. Requires ANTHROPIC_API_KEY from the user at runtime.
+1. `task import-swebench <instance-id>`: fetch ScaleAI/SWE-bench_Pro (HF) row ->
+   bundle with test_patch + f2p/p2p ids; pick a small instance.
+2. Implement TEST_PATCH-format staging/execution (apply test patch in eval container,
+   run named test ids) in harness + validate + run.
+3. End-to-end: init -> validate -> stub gold run (RESOLVED) -> stub no-op (UNRESOLVED)
+   -> query DB; commit the JSON reports as evaluation artifacts.

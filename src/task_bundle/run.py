@@ -77,6 +77,8 @@ def execute_run(
             ),
             test_command_template=bundle.spec.tests.command_template,
             timeout_seconds=bundle.spec.tests.timeout_seconds,
+            docker=docker,
+            image_tag=tag,
         )
     )
     diff = capture_diff(solver_ws)

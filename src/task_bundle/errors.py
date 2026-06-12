@@ -24,6 +24,10 @@ class DockerError(TaskError):
     """A docker operation failed or the daemon is unreachable."""
 
 
+class SolverError(TaskError):
+    """A solver could not run (missing API key, exhausted budget, bad config)."""
+
+
 class ContractViolation(TaskError):
     """The baseline test contract does not hold (validate failures)."""
 
