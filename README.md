@@ -4,13 +4,13 @@ A CLI for packaging SWE-bench-style coding tasks as portable **bundles**, valida
 their baseline test contract in containers, and running LLM solvers against them in
 isolation — with every command logged to a queryable SQLite database.
 
-> **Status: work in progress.** Built in reviewable milestones; see
-> [PROGRESS.md](PROGRESS.md) for what exists today and [DESIGN.md](DESIGN.md) for the
-> full architecture. Currently implemented: bundle spec, `task init` (with image
-> build), `task validate`, `task run` (stub + claude solvers), SQLite command
-> logging with `task logs` / `task runs`, `task import-swebench` (verified
-> end-to-end on a real SWE-bench Pro instance — see `evaluation/`), and the
-> authoring/ops helpers `verify-gold`, `diff`, `doctor`, and `clean`.
+> **Status: feature-complete**, built in reviewable milestones. See
+> [DESIGN_NOTES.md](DESIGN_NOTES.md) for the design rationale, [PROGRESS.md](PROGRESS.md)
+> for the decision log, and [DESIGN.md](DESIGN.md) for the working design. The full
+> command surface — `init`, `validate`, `run` (stub + claude solvers), `verify-gold`,
+> `import-swebench` (verified end-to-end on a real SWE-bench Pro instance, see
+> `evaluation/`), `diff`, `logs` / `runs`, `doctor`, and `clean` — is implemented,
+> tested, and documented.
 
 ## Why
 
@@ -23,7 +23,7 @@ slow and brittle; `task` makes it a few commands.
 ## Install
 
 Requires Python 3.11+, [uv](https://docs.astral.sh/uv/), git, and Docker (for
-milestone 2+).
+building and running task images). Run `task doctor` to check your environment.
 
 ```sh
 uv sync
@@ -84,8 +84,8 @@ Re-running `task init my-task` is idempotent; `--force` re-clones from scratch.
 | `tests.timeout_seconds` | Per-test-invocation timeout |
 | `tests.test_patch` + `tests.fail2pass_ids`/`pass2pass_ids` | SWE-bench-style alternative to the `tests/` directories: a test patch plus explicit test identifiers. A bundle uses exactly one of the two formats. |
 
-Optional `patch.diff` at the bundle root is the golden patch (used by the planned
-`task verify-gold`).
+Optional `patch.diff` at the bundle root is the golden patch (used by
+`task verify-gold` and `task run --gold`).
 
 ## The test-hiding guarantee
 
@@ -132,7 +132,7 @@ gets a fresh container so runs cannot contaminate each other.
 | `task init <bundle> [--repo URL --commit SHA] [--base-image IMG] [--test-command TPL] [--setup CMD]... [--force] [--skip-build] [--rebuild]` | ✅ | Scaffold the bundle, clone the repo at the pinned commit, build + smoke-test the task image (cached by content hash). |
 | `task validate <bundle> [--attempts N] [--rebuild]` | ✅ | Baseline contract: pass2pass all pass, fail2pass all fail; each suite runs 3× in fresh containers and flaky tests are flagged. Exit 2 with specific reasons on violation. |
 | `task logs [<command-id>]` | ✅ | No argument: list recent commands. With an id: show argv, exit code, per-test results, artifacts, and the command log. |
-| `task runs list` / `task runs show <run-id>` | ✅ | Query solver runs (populated by `task run`, milestone 4). |
+| `task runs list` / `task runs show <run-id>` | ✅ | Query solver runs (populated by `task run`). |
 | `task run <bundle> [--solver stub\|claude] [--patch FILE \| --gold] [--model M] [--max-iterations N] [--rebuild]` | ✅ | Baseline → solve → grade in separate containers; before/after table, RESOLVED/UNRESOLVED verdict, sorted-key `report.json` + `solver.diff`/transcript artifacts, run + token/cost stats recorded in DB. `claude` solver needs `ANTHROPIC_API_KEY`. |
 | `task import-swebench <instance-id> [--dest DIR] [--test-command TPL] [--timeout N] [--no-init]` | ✅ | Convert a public SWE-bench Pro instance (ScaleAI/SWE-bench_Pro on HuggingFace) into a ready-to-validate bundle: prebuilt instance image as base, hidden tests as test patch + explicit f2p/p2p ids, gold patch saved as `patch.diff`. See `evaluation/` for a real end-to-end run. |
 | `task verify-gold <bundle> [--rebuild]` | ✅ | Prove solvability: apply `patch.diff` via a deterministic stub solver and confirm every fail2pass test flips to pass and every pass2pass holds. Exit 2 (naming each offending test) if the golden patch doesn't cleanly resolve the task. Records no run — it's an authoring check. |

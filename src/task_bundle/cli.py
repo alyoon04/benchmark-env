@@ -829,8 +829,7 @@ def runs_list(
         rows = db.list_runs(limit)
         if not rows:
             console.print(
-                f"No runs recorded yet in {settings.db_path}. "
-                "Runs are created by `task run` (milestone 4)."
+                f"No runs recorded yet in {settings.db_path}. Runs are created by `task run`."
             )
             return
         table = Table(title="Solver runs")

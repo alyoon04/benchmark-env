@@ -131,7 +131,7 @@ def convert_instance(
             # LIMITATION: assumes an *editable* install at /app. A non-editable
             # instance imports from site-packages, so the solver's edits would be
             # invisible and every gold run would grade as a false UNRESOLVED;
-            # `rm -rf /app` could also drop compiled artifacts. `verify-gold` (M7)
+            # `rm -rf /app` could also drop compiled artifacts. `task verify-gold`
             # is the structural guard — run it after importing a new instance.
             setup_commands=["rm -rf /app && ln -s /workspace /app"],
             # Containers run as uid 1000 with no passwd entry; tools that write

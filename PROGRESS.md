@@ -10,7 +10,7 @@
 - [x] 5. `task run` with ClaudeSolver (agentic loop, capped)
 - [x] 6. End-to-end on real SWE-bench Pro instance (`task import-swebench`)
 - [x] 7. Extra commands: `verify-gold`, `diff`, `doctor`, `clean`
-- [ ] 8. Polish: README, DESIGN_NOTES.md, CI, final checklist ← **next**
+- [x] 8. Polish: README, DESIGN_NOTES.md, CI, final checklist
 
 ## Decisions made
 
@@ -64,18 +64,19 @@
 
 ## Current state
 
-Milestone 7 complete: the four authoring/ops helpers are in. `verify-gold` proves
-solvability (apply patch.diff via a gold StubSolver, assert f2p flip + p2p hold,
-exit 2 with specifics otherwise) — verified on the real ansible instance, so the
-M6 editable-install assumption now has its structural guard. `diff <run-id>` prints
-a run's stored solver patch; `doctor` runs preflight checks (docker/git/API key/disk);
-`clean` reclaims disk (images/workspaces/run artifacts) with a preview + confirmation
-and never touches the SQLite history. 124 tests (12 docker-marked), ruff + mypy
---strict clean.
+All eight milestones complete. The full surface — `init`, `validate`, `run`
+(stub + claude), `verify-gold`, `import-swebench`, `diff`, `logs`, `runs`,
+`doctor`, `clean` — is implemented, tested, and documented. `DESIGN_NOTES.md` is
+the distilled final design deliverable; `.github/workflows/ci.yml` runs ruff +
+mypy + the non-docker suite on a 3.11/3.12 matrix. User-facing docs and CLI
+messages were swept of stale milestone/"planned" references. 124 tests
+(12 docker-marked), ruff + mypy --strict clean.
 
-## Next steps (milestone 8 — polish)
+## Possible follow-ups (out of original scope)
 
-1. Distill `DESIGN_NOTES.md` (final deliverable) from DESIGN.md decisions.
-2. CI: GitHub Actions running ruff + mypy + the non-docker test suite.
-3. Final checklist pass: README accuracy, `task --help` for every command, the
-   end-to-end story in `evaluation/`.
+- Live ClaudeSolver hand-test against a real SWE-bench Pro instance (only stub
+  proven end-to-end on the real instance so far).
+- Per-language `import-swebench` install handling (drop the editable-`/app`
+  assumption); the guard note lives next to `setup_commands` in `swebench.py`.
+- Batched test execution (one exec for many test paths) if throughput matters.
+- Digest-pin example base images for fully reproducible builds.
