@@ -73,6 +73,23 @@ class TestConvertInstance:
         assert bundle.spec.tests.command_template == "run-cobol-test {test_path}"
 
 
+class TestImportGuard:
+    def test_no_init_points_to_verify_gold(
+        self, tmp_path: Path, isolated_db: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--no-init prints guidance that includes the verify-gold solvability check."""
+        import task_bundle.cli as cli
+
+        monkeypatch.setattr(cli, "fetch_instance", lambda _id: ROW)
+        dest = tmp_path / "ansible-task"
+        result = runner.invoke(
+            app, ["import-swebench", "ignored-id", "--dest", str(dest), "--no-init"]
+        )
+        assert result.exit_code == 0, result.output
+        assert "verify-gold" in result.output
+        assert (dest / "task.json").exists()
+
+
 class TestPatchChangedPaths:
     def test_modified_and_new_files_listed(self, tmp_path: Path) -> None:
         patch = tmp_path / "tp.diff"

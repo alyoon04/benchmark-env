@@ -553,12 +553,22 @@ def import_swebench(
         bool,
         typer.Option("--init/--no-init", help="Run task init (clone + image) after conversion."),
     ] = True,
+    verify: Annotated[
+        bool,
+        typer.Option(
+            "--verify/--no-verify",
+            help="After init, run verify-gold to confirm the imported instance is solvable.",
+        ),
+    ] = True,
 ) -> None:
     """Convert a ScaleAI/SWE-bench_Pro instance into a ready-to-validate bundle.
 
     Uses the instance's prebuilt Docker image (jefzda/sweap-images) as the base, the
     test patch + explicit fail2pass/pass2pass ids as hidden tests, and the gold
-    patch as patch.diff (so `task run --gold` proves solvability).
+    patch as patch.diff. With --init (default) the bundle is built and then
+    verify-gold runs: a non-gradeable instance — e.g. one whose package is not an
+    editable install, so the solver's edits wouldn't be imported — fails loudly here
+    instead of silently grading every solver UNRESOLVED later.
     """
     bundle_dir = dest or Path(instance_id)
     with record_command("import-swebench", bundle_dir) as rec:
@@ -572,10 +582,13 @@ def import_swebench(
             f"{len(bundle.spec.tests.pass2pass_ids)} pass2pass tests, "
             f"base image {bundle.spec.environment.base_image.split(':')[0]}:...)"
         )
-    if init_after:
-        init(bundle_dir)
-    else:
-        console.print(f"Next: task init {bundle_dir} && task validate {bundle_dir}")
+    if not init_after:
+        console.print(f"Next: task init {bundle_dir} && task verify-gold {bundle_dir}")
+        return
+    init(bundle_dir)
+    if verify:
+        console.print("Confirming the golden patch resolves the task (verify-gold) ...")
+        verify_gold(bundle_dir)
 
 
 @app.command()
