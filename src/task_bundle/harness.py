@@ -46,8 +46,32 @@ def image_tag(bundle: Bundle) -> str:
     return f"{IMAGE_REPO}/{bundle.spec.id}:{image_cache_key(bundle)}"
 
 
-def generate_dockerfile(bundle: Bundle) -> str:
-    """Render the task Dockerfile (pure data -> text; committed to artifacts later)."""
+def resolve_work_dir(docker: Docker, bundle: Bundle) -> str:
+    """The in-container path the repo must live at, discovered from the base image.
+
+    Prebuilt images (e.g. SWE-bench Pro) install the repo *editable* at their
+    configured WorkingDir (commonly ``/app``): a finder maps ``import pkg`` to an
+    absolute path under it. We must make that path resolve to our cleaned clone so
+    tests import the code the solver edits. Native bundles (a plain base with no
+    meaningful WorkingDir) use ``/workspace``; ``/`` is treated as "none" so we never
+    symlink over the container root.
+    """
+    base = bundle.spec.environment.base_image
+    if not docker.image_exists(base):
+        docker.pull(base)
+    work_dir = docker.image_workdir(base)
+    return work_dir if work_dir and work_dir not in ("/", WORKDIR) else WORKDIR
+
+
+def generate_dockerfile(bundle: Bundle, work_dir: str = WORKDIR) -> str:
+    """Render the task Dockerfile (pure data -> text; committed to artifacts later).
+
+    ``work_dir`` is the base image's repo path (see ``resolve_work_dir``). When it
+    differs from ``/workspace`` the base ships an install bound to it, so we point
+    that path at our clone with a symlink — discovered, never hardcoded, and never
+    ``/``. The solver still works in ``/workspace`` (a clean, artifact-free tree, so
+    diff capture stays clean); the symlink only redirects the editable import path.
+    """
     env = bundle.spec.environment
     lines = [f"FROM {env.base_image}"]
     lines += [f"ENV {key}={shlex.quote(value)}" for key, value in sorted(env.env.items())]
@@ -55,6 +79,10 @@ def generate_dockerfile(bundle: Bundle) -> str:
         f"COPY --chown=1000:1000 repo/ {WORKDIR}/",
         f"WORKDIR {WORKDIR}",
     ]
+    if work_dir != WORKDIR:
+        lines.append(
+            f"RUN rm -rf {shlex.quote(work_dir)} && ln -s {WORKDIR} {shlex.quote(work_dir)}"
+        )
     if env.setup_commands:
         # Setup runs as root (system package installs etc.), then the tree is handed
         # back to the sandbox uid the containers run as.
@@ -76,12 +104,13 @@ def ensure_image(docker: Docker, bundle: Bundle, *, rebuild: bool = False) -> tu
     tag = image_tag(bundle)
     if not rebuild and docker.image_exists(tag):
         return tag, ""
+    work_dir = resolve_work_dir(docker, bundle)
     with tempfile.TemporaryDirectory(prefix="task-bundle-ctx-") as ctx_str:
         ctx = Path(ctx_str)
         build_clean_tree(
             bundle.workspace_dir, ctx / "repo", excludes=bundle.spec.solver.workspace_excludes
         )
-        (ctx / "Dockerfile").write_text(generate_dockerfile(bundle))
+        (ctx / "Dockerfile").write_text(generate_dockerfile(bundle, work_dir))
         log = docker.build(ctx, tag, network=bundle.spec.environment.network_during_setup)
     return tag, log
 

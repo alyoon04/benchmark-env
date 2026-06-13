@@ -73,6 +73,20 @@ class Docker:
         proc = _docker(["image", "inspect", "--format", "{{.Id}}", tag], timeout=60)
         return proc.stdout.strip() if proc.returncode == 0 else None
 
+    def image_workdir(self, tag: str) -> str:
+        """The image's configured WorkingDir ("" if unset or the image is absent)."""
+        proc = _docker(["image", "inspect", "--format", "{{.Config.WorkingDir}}", tag], timeout=60)
+        return proc.stdout.strip() if proc.returncode == 0 else ""
+
+    def pull(self, image: str, *, timeout: int = 1800) -> None:
+        """Pull ``image`` from its registry (network on)."""
+        try:
+            proc = _docker(["pull", image], timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            raise DockerError(f"Pulling {image} timed out after {timeout}s.") from e
+        if proc.returncode != 0:
+            raise DockerError(f"Could not pull {image}: {proc.stderr.strip()}")
+
     def build(self, context: Path, tag: str, *, network: bool = True, timeout: int = 1800) -> str:
         """Build ``context`` (containing a Dockerfile) into ``tag``; return the build log."""
         args = ["build", "-t", tag]

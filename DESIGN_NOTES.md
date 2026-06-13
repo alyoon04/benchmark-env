@@ -242,14 +242,17 @@ the whole point is to show the patch is what makes the task solvable.
 
 ## 10. Known limitations and future work
 
-- **SWE-bench import assumes an editable install.** `import-swebench` re-points the
-  instance image's `/app` at the engine's `/workspace` (`rm -rf /app && ln -s /workspace
-  /app`) so tests import the code the solver edits. This holds for the common editable-
-  install Python instance, but a non-editable install would import from site-packages —
-  the solver's edits would be invisible and grading would report a false `UNRESOLVED`, and
-  `rm -rf /app` could drop compiled artifacts. **`verify-gold` is the structural guard**:
-  run it after importing a new instance; a real flip there proves the wiring. Generalizing
-  this per-language (instead of one convention) is future work.
+- **SWE-bench import relies on an editable install.** Prebuilt instance images install
+  the repo *editable* at their configured `WorkingDir` (a finder maps `import pkg` to an
+  absolute path under it). The engine **discovers that path from the image** (never
+  hardcodes `/app`, never touches `/`) and symlinks it to the engine's clean
+  `/workspace`, so tests import the code the solver edits while the solver still works in
+  an artifact-free tree (keeping diff capture clean). The irreducible limit is a
+  *non-editable* install: it imports from site-packages regardless of path, so the
+  solver's edits would be invisible — unfixable without a network/language-specific
+  reinstall. **`import-swebench` runs `verify-gold` automatically** so this fails loudly
+  at import (a gold patch that can't flip f2p) instead of silently grading every solver
+  `UNRESOLVED`. Per-language reinstall support is future work.
 - **Per-test exec granularity.** One container-exec per test path is simple and language-
   agnostic but slower than a single batched invocation. Fine at task scale; a batched mode
   is possible if throughput ever matters.

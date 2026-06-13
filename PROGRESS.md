@@ -61,6 +61,9 @@
 | `diff`/`doctor`/`clean` are not wrapped in `record_command` (open DB directly or not at all) | They're query/ops commands like `logs`/`runs`; `clean --all` would also delete the artifact dir it just created under record_command |
 | `clean` always previews the removal set and prompts (skip with `--yes`); never deletes the SQLite DB | Destructive op — confirmation is the guardrail; history must survive a disk reclaim |
 | `clean` tests use a unique bundle id and exercise `--all` only via the abort path | Docker images are machine-global, not test-isolated; a real `--all` deletion would nuke the dev's other images |
+| `import-swebench` auto-runs `verify-gold` after init (default; `--no-verify` opts out) | The editable-install assumption can't be *fixed* for a non-editable instance, only detected; auto-verify makes a non-gradeable bundle fail loudly at import instead of silently grading every solver UNRESOLVED |
+| Repo path for prebuilt images is *discovered* from the base image's `WorkingDir` (not hardcoded `/app`; `/` and empty fall back to `/workspace`); the symlink to the clean tree is applied at build time, not via task.json setup | Removes the brittle `/app` hardcode and works for any prebuilt-image convention; keeping the symlink (vs overlaying our clone onto the image's repo dir) keeps the solver's tree artifact-free, which diff capture requires |
+| Artifact preservation (compiled extensions under the repo path) was *not* added | It conflicts with clean diff capture (a solver editing a tree that also holds image build artifacts would diff them as changes); true support needs an apply-diff-in-place grade — documented future work |
 
 ## Current state
 
@@ -76,7 +79,8 @@ messages were swept of stale milestone/"planned" references. 124 tests
 
 - Live ClaudeSolver hand-test against a real SWE-bench Pro instance (only stub
   proven end-to-end on the real instance so far).
-- Per-language `import-swebench` install handling (drop the editable-`/app`
-  assumption); the guard note lives next to `setup_commands` in `swebench.py`.
+- Non-editable / compiled-extension `import-swebench` support via an apply-diff-in-place
+  grade + optional reinstall (the editable case and the `/app` hardcode are now handled;
+  non-editable is detected loudly by the auto verify-gold guard).
 - Batched test execution (one exec for many test paths) if throughput matters.
 - Digest-pin example base images for fully reproducible builds.

@@ -45,7 +45,7 @@ class TestConvertInstance:
         assert bundle.spec.repo.url == "https://github.com/ansible/ansible"
         assert bundle.spec.repo.commit == ROW["base_commit"]
         assert bundle.spec.environment.base_image.startswith("jefzda/sweap-images:")
-        assert bundle.spec.environment.setup_commands == ["rm -rf /app && ln -s /workspace /app"]
+        assert bundle.spec.environment.setup_commands == []
         assert bundle.spec.environment.env == {"HOME": "/tmp"}
         assert bundle.spec.tests.fail2pass_ids == [
             "test/units/utils/test_vars.py::TestVariableUtils::test_combine_vars_replace"

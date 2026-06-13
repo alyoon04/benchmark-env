@@ -3,7 +3,12 @@
 from pathlib import Path
 
 from task_bundle.bundle import Bundle
-from task_bundle.harness import generate_dockerfile, image_cache_key, image_tag
+from task_bundle.harness import (
+    generate_dockerfile,
+    image_cache_key,
+    image_tag,
+    resolve_work_dir,
+)
 
 SHA = "a" * 40
 SHA_B = "b" * 40
@@ -67,3 +72,49 @@ class TestDockerfile:
         a = make_bundle(tmp_path, "a")
         b = make_bundle(tmp_path, "b")
         assert generate_dockerfile(a) == generate_dockerfile(b)
+
+    def test_no_symlink_for_native_workdir(self, tmp_path: Path) -> None:
+        df = generate_dockerfile(make_bundle(tmp_path), work_dir="/workspace")
+        assert "ln -s" not in df
+
+    def test_symlinks_discovered_repo_path(self, tmp_path: Path) -> None:
+        df = generate_dockerfile(make_bundle(tmp_path), work_dir="/app")
+        assert "RUN rm -rf /app && ln -s /workspace /app" in df
+        assert "WORKDIR /workspace" in df  # solver still works in the clean tree
+
+
+class _FakeDocker:
+    """Stand-in for Docker that reports a fixed WorkingDir without a real daemon."""
+
+    def __init__(self, work_dir: str, *, present: bool = True) -> None:
+        self._work_dir = work_dir
+        self._present = present
+        self.pulled = False
+
+    def image_exists(self, image: str) -> bool:
+        return self._present
+
+    def pull(self, image: str) -> None:
+        self.pulled = True
+
+    def image_workdir(self, image: str) -> str:
+        return self._work_dir
+
+
+class TestResolveWorkDir:
+    def test_prebuilt_repo_path_used(self, tmp_path: Path) -> None:
+        docker = _FakeDocker("/app")
+        assert resolve_work_dir(docker, make_bundle(tmp_path)) == "/app"  # type: ignore[arg-type]
+
+    def test_empty_workdir_falls_back_to_workspace(self, tmp_path: Path) -> None:
+        docker = _FakeDocker("")
+        assert resolve_work_dir(docker, make_bundle(tmp_path)) == "/workspace"  # type: ignore[arg-type]
+
+    def test_root_workdir_is_ignored(self, tmp_path: Path) -> None:
+        docker = _FakeDocker("/")
+        assert resolve_work_dir(docker, make_bundle(tmp_path)) == "/workspace"  # type: ignore[arg-type]
+
+    def test_pulls_base_when_absent(self, tmp_path: Path) -> None:
+        docker = _FakeDocker("/app", present=False)
+        resolve_work_dir(docker, make_bundle(tmp_path))  # type: ignore[arg-type]
+        assert docker.pulled

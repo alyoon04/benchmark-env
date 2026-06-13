@@ -124,16 +124,17 @@ def convert_instance(
         language=language,
         environment=EnvironmentSpec(
             base_image=f"{IMAGE_REPO}:{row['dockerhub_tag']}",
-            # The prebuilt image has all deps installed against its own repo copy at
-            # /app (the SWE-bench Pro image convention, often an editable install).
-            # Re-point /app at the engine's cleaned /workspace tree so tests import
-            # the code the solver actually edits.
-            # LIMITATION: assumes an *editable* install at /app. A non-editable
-            # instance imports from site-packages, so the solver's edits would be
-            # invisible and every gold run would grade as a false UNRESOLVED;
-            # `rm -rf /app` could also drop compiled artifacts. `task verify-gold`
-            # is the structural guard — run it after importing a new instance.
-            setup_commands=["rm -rf /app && ln -s /workspace /app"],
+            # The prebuilt image already has all deps installed (editable, against
+            # its own repo copy). The engine discovers that repo path from the image's
+            # WorkingDir at build time and points it at our cleaned clone, so tests
+            # import the code the solver edits (see harness.resolve_work_dir); no setup
+            # commands are needed here.
+            # LIMITATION: this relies on an *editable* install. A non-editable instance
+            # imports from site-packages regardless of path, so the solver's edits
+            # would be invisible and every gold run would grade a false UNRESOLVED.
+            # `import-swebench` runs `verify-gold` automatically to catch exactly that
+            # before the bundle is trusted.
+            setup_commands=[],
             # Containers run as uid 1000 with no passwd entry; tools that write
             # under $HOME (e.g. ansible's ~/.ansible/tmp) need a writable one.
             env={"HOME": "/tmp"},
