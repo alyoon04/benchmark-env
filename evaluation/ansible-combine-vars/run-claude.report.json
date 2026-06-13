@@ -1,0 +1,129 @@
+{
+  "command_id": "cmd_19ebf23d994-1b0e063f",
+  "diff": "diff --git a/lib/ansible/vars/manager.py b/lib/ansible/vars/manager.py\nindex 93a1b9a..e318f73 100644\n--- a/lib/ansible/vars/manager.py\n+++ b/lib/ansible/vars/manager.py\n@@ -786,3 +786,17 @@ class VarsWithSources(MutableMapping):\n \n     def copy(self):\n         return VarsWithSources.new_vars_with_sources(self.data.copy(), self.sources.copy())\n+\n+    def __or__(self, other):\n+        if not isinstance(other, MutableMapping):\n+            return NotImplemented\n+        return self.data | other\n+\n+    def __ror__(self, other):\n+        if not isinstance(other, MutableMapping):\n+            return NotImplemented\n+        return other | self.data\n+\n+    def __ior__(self, other):\n+        self.data |= other\n+        return self.data\n",
+  "finished_at": "2026-06-13T04:02:45+00:00",
+  "image": {
+    "digest": "sha256:091a3d5dffa8c873a4afa69484ad835dd40b097d8dddde0816206cab7dcab1df",
+    "tag": "task-bundle/ansible-combine-vars:14525d8425543c35"
+  },
+  "model": "claude-opus-4-7",
+  "repo": {
+    "commit": "f7234968d241d7171aadb1e873a67510753f3163",
+    "url": "https://github.com/ansible/ansible"
+  },
+  "run_id": "run_19ebf23de13-ba998e17",
+  "schema_version": 1,
+  "solver": "claude",
+  "started_at": "2026-06-13T04:00:59+00:00",
+  "stats": {
+    "cost_usd": 2.370845,
+    "input_tokens": 461729,
+    "output_tokens": 2488
+  },
+  "task_id": "ansible-combine-vars",
+  "tests": [
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_combine_vars_improper_args"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_combine_vars_merge"
+    },
+    {
+      "baseline_status": "failed",
+      "bucket": "fail2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_combine_vars_replace"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_merge_hash_non_recursive_and_list_append"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_merge_hash_non_recursive_and_list_append_rp"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_merge_hash_non_recursive_and_list_keep"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_merge_hash_non_recursive_and_list_prepend"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_merge_hash_non_recursive_and_list_prepend_rp"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_merge_hash_non_recursive_and_list_replace"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_merge_hash_recursive_and_list_append"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_merge_hash_recursive_and_list_append_rp"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_merge_hash_recursive_and_list_keep"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_merge_hash_recursive_and_list_prepend"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_merge_hash_recursive_and_list_prepend_rp"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_merge_hash_recursive_and_list_replace"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "test/units/utils/test_vars.py::TestVariableUtils::test_merge_hash_simple"
+    }
+  ],
+  "tool_versions": {
+    "docker": "28.3.2",
+    "git": "git version 2.39.3 (Apple Git-145)",
+    "python": "3.14.5",
+    "task_bundle": "0.1.0"
+  },
+  "verdict": "RESOLVED"
+}

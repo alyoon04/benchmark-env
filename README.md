@@ -8,9 +8,16 @@ isolation — with every command logged to a queryable SQLite database.
 > [DESIGN_NOTES.md](DESIGN_NOTES.md) for the design rationale, [PROGRESS.md](PROGRESS.md)
 > for the decision log, and [DESIGN.md](DESIGN.md) for the working design. The full
 > command surface — `init`, `validate`, `run` (stub + claude solvers), `verify-gold`,
-> `import-swebench` (verified end-to-end on a real SWE-bench Pro instance, see
-> `evaluation/`), `diff`, `logs` / `runs`, `doctor`, and `clean` — is implemented,
+> `import-swebench`, `diff`, `logs` / `runs`, `doctor`, and `clean` — is implemented,
 > tested, and documented.
+>
+> **Validated scope:** the full flow (incl. a live Claude solve → RESOLVED) is proven
+> end-to-end on a real *Python* SWE-bench Pro instance — see
+> [`evaluation/`](evaluation/). A cross-language sweep
+> ([`evaluation/multi-instance/`](evaluation/multi-instance/)) showed the engine grades
+> Python-editable, pure-git repos and uses `verify-gold` to *refuse* (never mis-grade)
+> instances whose deps live under the repo dir (submodules, `node_modules`); closing
+> that gap is documented as future work in [DESIGN_NOTES.md](DESIGN_NOTES.md).
 
 ## Why
 

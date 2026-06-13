@@ -1,0 +1,11 @@
+=== TestParse [fail2pass] baseline: failed ===
+FAIL	TestParse [setup failed]
+# TestParse
+package TestParse is not in std (/usr/local/go/src/TestParse)
+failed to initialize build cache at /tmp/.cache/go-build: mkdir /tmp/.cache/go-build: permission denied
+
+=== TestParse [fail2pass] post_gold: failed ===
+FAIL	TestParse [setup failed]
+# TestParse
+package TestParse is not in std (/usr/local/go/src/TestParse)
+failed to initialize build cache at /tmp/.cache/go-build: mkdir /tmp/.cache/go-build: permission denied

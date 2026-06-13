@@ -31,12 +31,17 @@ FILTER_URL = "https://datasets-server.huggingface.co/filter"
 IMAGE_REPO = "jefzda/sweap-images"
 PAGE = 100
 
-# {test_path} receives one test identifier (e.g. a pytest node id).
+# Per-language default test commands for import-swebench; {test_path} receives one
+# test identifier. ONLY the Python default is validated end-to-end (see
+# evaluation/multi-instance/). The others are best-effort starting points — override
+# with --test-command. `verify-gold` runs automatically at import and will flag a
+# default that doesn't actually execute the instance's tests, so a wrong guess fails
+# loudly rather than silently mis-grading.
 _TEST_COMMANDS = {
     "python": "python -m pytest {test_path} -q",
     "js": "npx mocha {test_path}",
     "ts": "npx mocha {test_path}",
-    "go": "go test {test_path}",
+    "go": "go test -run {test_path} ./...",
 }
 
 

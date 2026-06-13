@@ -8,3 +8,4 @@ artifacts/
 *.db
 examples/.origin/
 .task/
+.DS_Store
