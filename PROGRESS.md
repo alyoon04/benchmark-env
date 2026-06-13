@@ -9,8 +9,8 @@
 - [x] 4. `task run` with StubSolver (two-phase run, grading, JSON report)
 - [x] 5. `task run` with ClaudeSolver (agentic loop, capped)
 - [x] 6. End-to-end on real SWE-bench Pro instance (`task import-swebench`)
-- [ ] 7. Extra commands: `verify-gold`, `diff`, `doctor`, `clean` ← **next**
-- [ ] 8. Polish: README, DESIGN_NOTES.md, CI, final checklist
+- [x] 7. Extra commands: `verify-gold`, `diff`, `doctor`, `clean`
+- [ ] 8. Polish: README, DESIGN_NOTES.md, CI, final checklist ← **next**
 
 ## Decisions made
 
@@ -56,21 +56,26 @@
 | `run_detached` pins `--entrypoint sleep` | sweap images set `ENTRYPOINT ["/bin/bash"]`, which mangled the idle command into `bash sleep infinity` |
 | `_git` sets `GIT_CEILING_DIRECTORIES` to cwd's parent on every invocation | A foreign enclosing repo (e.g. a git-managed $HOME) made `git apply` silently skip every patch path and exit 0 — numstat returned nothing, staging no-opped, and the f2p test "passed" on baseline |
 | `docker info` timeout treated as "daemon available" (ensure_available + test skip probe) | A large pull in flight can make the daemon slow to answer info while still serving runs |
+| `verify-gold` reuses the run pipeline (gold StubSolver) but records NO run row — only command + per-phase test_results (baseline/post_gold) | It's an authoring check (sibling to `validate`), not a solver attempt; keeping it out of `runs list` keeps that table about solver performance |
+| `check_gold_contract` is stricter than `run_verdict`: an f2p that was already green is a problem even though the verdict is still RESOLVED | verify-gold proves the *patch* is what solves the task; an already-passing f2p proves nothing |
+| `diff`/`doctor`/`clean` are not wrapped in `record_command` (open DB directly or not at all) | They're query/ops commands like `logs`/`runs`; `clean --all` would also delete the artifact dir it just created under record_command |
+| `clean` always previews the removal set and prompts (skip with `--yes`); never deletes the SQLite DB | Destructive op — confirmation is the guardrail; history must survive a disk reclaim |
+| `clean` tests use a unique bundle id and exercise `--all` only via the abort path | Docker images are machine-global, not test-isolated; a real `--all` deletion would nuke the dev's other images |
 
 ## Current state
 
-Milestone 6 complete: `task import-swebench` converts a public SWE-bench Pro
-instance into a TEST_PATCH-format bundle, and the full pipeline ran end-to-end on
-a real instance (ansible/ansible, 1 f2p + 15 p2p): validate holds 3x consistent,
-stub gold run -> RESOLVED, stub no-op -> UNRESOLVED; reports committed under
-`evaluation/ansible-combine-vars/`. Three real bugs found and fixed along the way
-(image ENTRYPOINT, foreign-enclosing-repo git apply, HF filter-endpoint 500s).
-103 tests (8 docker-marked), ruff + mypy --strict clean.
+Milestone 7 complete: the four authoring/ops helpers are in. `verify-gold` proves
+solvability (apply patch.diff via a gold StubSolver, assert f2p flip + p2p hold,
+exit 2 with specifics otherwise) — verified on the real ansible instance, so the
+M6 editable-install assumption now has its structural guard. `diff <run-id>` prints
+a run's stored solver patch; `doctor` runs preflight checks (docker/git/API key/disk);
+`clean` reclaims disk (images/workspaces/run artifacts) with a preview + confirmation
+and never touches the SQLite history. 124 tests (12 docker-marked), ruff + mypy
+--strict clean.
 
-## Next steps (milestone 7)
+## Next steps (milestone 8 — polish)
 
-1. `task verify-gold <bundle>`: apply patch.diff, confirm f2p flips and p2p holds
-   (shares the run pipeline with a gold StubSolver; no run row, or a flagged one).
-2. `task diff <run-id>`: print the stored solver diff for a run.
-3. `task doctor`: docker daemon, git version, API key presence, disk space.
-4. `task clean <bundle> | --run RUN_ID | --all`: remove images/workspaces/artifacts.
+1. Distill `DESIGN_NOTES.md` (final deliverable) from DESIGN.md decisions.
+2. CI: GitHub Actions running ruff + mypy + the non-docker test suite.
+3. Final checklist pass: README accuracy, `task --help` for every command, the
+   end-to-end story in `evaluation/`.

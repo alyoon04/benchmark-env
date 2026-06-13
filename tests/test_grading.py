@@ -5,9 +5,11 @@ import pytest
 from task_bundle.grading import (
     FLAKY,
     Bucket,
+    ConsolidatedResult,
     Status,
     TestExecution,
     check_baseline_contract,
+    check_gold_contract,
     consolidate,
     run_verdict,
 )
@@ -18,6 +20,10 @@ def execs(test: str, bucket: Bucket, statuses: list[Status]) -> list[TestExecuti
         TestExecution(test=test, bucket=bucket, attempt=i + 1, status=s, duration_seconds=0.1)
         for i, s in enumerate(statuses)
     ]
+
+
+def consolidated(test: str, bucket: Bucket, status: Status) -> ConsolidatedResult:
+    return ConsolidatedResult(test=test, bucket=bucket, status=status, attempt_statuses=(status,))
 
 
 class TestConsolidate:
@@ -117,3 +123,58 @@ class TestRunVerdict:
     def test_flaky_post_solver_is_unresolved(self) -> None:
         results = consolidate(execs("f0", "fail2pass", ["passed", "failed"]))
         assert run_verdict(results) == "UNRESOLVED"
+
+
+class TestGoldContract:
+    def test_genuine_flip_is_solvable(self) -> None:
+        baseline = [
+            consolidated("f", "fail2pass", "failed"),
+            consolidated("p", "pass2pass", "passed"),
+        ]
+        post = [
+            consolidated("f", "fail2pass", "passed"),
+            consolidated("p", "pass2pass", "passed"),
+        ]
+        assert check_gold_contract(baseline, post) == []
+
+    def test_f2p_not_fixed_is_specific(self) -> None:
+        baseline = [consolidated("test_x", "fail2pass", "failed")]
+        post = [consolidated("test_x", "fail2pass", "failed")]
+        [problem] = check_gold_contract(baseline, post)
+        assert "test_x" in problem
+        assert "does not fix" in problem
+
+    def test_f2p_already_green_proves_nothing(self) -> None:
+        baseline = [consolidated("test_x", "fail2pass", "passed")]
+        post = [consolidated("test_x", "fail2pass", "passed")]
+        [problem] = check_gold_contract(baseline, post)
+        assert "already PASSED" in problem
+
+    def test_p2p_regression_is_specific(self) -> None:
+        baseline = [
+            consolidated("f", "fail2pass", "failed"),
+            consolidated("test_y", "pass2pass", "passed"),
+        ]
+        post = [
+            consolidated("f", "fail2pass", "passed"),
+            consolidated("test_y", "pass2pass", "failed"),
+        ]
+        [problem] = check_gold_contract(baseline, post)
+        assert "test_y" in problem
+        assert "regressed" in problem
+
+    def test_no_fail2pass_tests_proves_nothing(self) -> None:
+        post = [consolidated("p", "pass2pass", "passed")]
+        [problem] = check_gold_contract([consolidated("p", "pass2pass", "passed")], post)
+        assert "nothing for the golden patch" in problem
+
+    def test_multiple_problems_all_reported(self) -> None:
+        baseline = [
+            consolidated("f", "fail2pass", "failed"),
+            consolidated("p", "pass2pass", "passed"),
+        ]
+        post = [
+            consolidated("f", "fail2pass", "failed"),  # not fixed
+            consolidated("p", "pass2pass", "failed"),  # regressed
+        ]
+        assert len(check_gold_contract(baseline, post)) == 2

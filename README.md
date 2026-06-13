@@ -8,8 +8,9 @@ isolation — with every command logged to a queryable SQLite database.
 > [PROGRESS.md](PROGRESS.md) for what exists today and [DESIGN.md](DESIGN.md) for the
 > full architecture. Currently implemented: bundle spec, `task init` (with image
 > build), `task validate`, `task run` (stub + claude solvers), SQLite command
-> logging with `task logs` / `task runs`, and `task import-swebench` (verified
-> end-to-end on a real SWE-bench Pro instance — see `evaluation/`).
+> logging with `task logs` / `task runs`, `task import-swebench` (verified
+> end-to-end on a real SWE-bench Pro instance — see `evaluation/`), and the
+> authoring/ops helpers `verify-gold`, `diff`, `doctor`, and `clean`.
 
 ## Why
 
@@ -134,7 +135,10 @@ gets a fresh container so runs cannot contaminate each other.
 | `task runs list` / `task runs show <run-id>` | ✅ | Query solver runs (populated by `task run`, milestone 4). |
 | `task run <bundle> [--solver stub\|claude] [--patch FILE \| --gold] [--model M] [--max-iterations N] [--rebuild]` | ✅ | Baseline → solve → grade in separate containers; before/after table, RESOLVED/UNRESOLVED verdict, sorted-key `report.json` + `solver.diff`/transcript artifacts, run + token/cost stats recorded in DB. `claude` solver needs `ANTHROPIC_API_KEY`. |
 | `task import-swebench <instance-id> [--dest DIR] [--test-command TPL] [--timeout N] [--no-init]` | ✅ | Convert a public SWE-bench Pro instance (ScaleAI/SWE-bench_Pro on HuggingFace) into a ready-to-validate bundle: prebuilt instance image as base, hidden tests as test patch + explicit f2p/p2p ids, gold patch saved as `patch.diff`. See `evaluation/` for a real end-to-end run. |
-| `task verify-gold` / `task diff` / `task doctor` / `task clean` | planned (M7) | Authoring and ops helpers. |
+| `task verify-gold <bundle> [--rebuild]` | ✅ | Prove solvability: apply `patch.diff` via a deterministic stub solver and confirm every fail2pass test flips to pass and every pass2pass holds. Exit 2 (naming each offending test) if the golden patch doesn't cleanly resolve the task. Records no run — it's an authoring check. |
+| `task diff <run-id>` | ✅ | Print the unified diff a run's solver produced (raw, pipeable to `git apply`). |
+| `task doctor` | ✅ | Preflight checks — Docker daemon, git, `ANTHROPIC_API_KEY`, free disk. Exit 1 if a required dependency is missing. |
+| `task clean <bundle> \| --run <id> \| --all [--yes]` | ✅ | Reclaim disk: remove task-bundle images, workspace clones, and run artifacts. Previews and prompts before deleting (skip with `--yes`); never touches the SQLite history. |
 
 ## Observability
 

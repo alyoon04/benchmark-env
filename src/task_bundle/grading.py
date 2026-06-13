@@ -102,3 +102,38 @@ def check_baseline_contract(results: list[ConsolidatedResult]) -> list[str]:
                 "fix the test."
             )
     return problems
+
+
+def check_gold_contract(
+    baseline: list[ConsolidatedResult], post_gold: list[ConsolidatedResult]
+) -> list[str]:
+    """Return specific problems with a golden-patch run; empty ⇒ the task is solvable.
+
+    Solvable ⇔ every fail2pass test FAILS on baseline and PASSES after the gold patch
+    (a genuine flip), and every pass2pass test PASSES both before and after. Stricter
+    than ``run_verdict`` on purpose: a fail2pass test that was already green proves
+    nothing, so it is a problem here even though the verdict would still be RESOLVED.
+    """
+    base_status = {(r.test, r.bucket): r.status for r in baseline}
+    problems = []
+    if not any(r.bucket == "fail2pass" for r in post_gold):
+        problems.append("no fail2pass tests defined; there is nothing for the golden patch to fix.")
+    for r in post_gold:
+        before = base_status.get((r.test, r.bucket))
+        if r.bucket == "fail2pass":
+            if r.status != "passed":
+                problems.append(
+                    f"fail2pass test `{r.test}` is {r.status.upper()} after the golden patch; "
+                    "patch.diff does not fix it (or does not apply to the tested code)."
+                )
+            elif before == "passed":
+                problems.append(
+                    f"fail2pass test `{r.test}` already PASSED on baseline, so the golden patch "
+                    "is not what makes it pass — this proves nothing. Move it to pass2pass."
+                )
+        elif r.bucket == "pass2pass" and r.status != "passed":
+            problems.append(
+                f"pass2pass test `{r.test}` regressed to {r.status.upper()} after the golden "
+                "patch; the patch breaks existing behavior it must preserve."
+            )
+    return problems

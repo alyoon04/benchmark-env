@@ -7,6 +7,9 @@ directory, and prints the command id so collaborators can query it later with
 """
 
 import json
+import os
+import shutil
+import subprocess
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -22,9 +25,15 @@ from task_bundle import __version__
 from task_bundle.bundle import Bundle, utc_now_iso
 from task_bundle.container import Docker
 from task_bundle.db import Database, new_id
-from task_bundle.errors import BundleError, ContractViolation, TaskError
-from task_bundle.grading import FLAKY, TestExecution, check_baseline_contract, consolidate
-from task_bundle.harness import ensure_image, run_baseline_suites, smoke_test
+from task_bundle.errors import BundleError, ContractViolation, DockerError, TaskError
+from task_bundle.grading import (
+    FLAKY,
+    TestExecution,
+    check_baseline_contract,
+    check_gold_contract,
+    consolidate,
+)
+from task_bundle.harness import IMAGE_REPO, ensure_image, run_baseline_suites, smoke_test
 from task_bundle.report import build_report, tool_versions, write_report
 from task_bundle.run import execute_run
 from task_bundle.solver import ClaudeSolver, Solver, StubSolver
@@ -455,6 +464,81 @@ def run(
         console.print(f"[dim]run id: {run_id} (task runs show {run_id})[/dim]")
 
 
+@app.command("verify-gold")
+def verify_gold(
+    bundle_path: Annotated[Path, typer.Argument(help="Bundle directory to verify.")],
+    rebuild: Annotated[bool, typer.Option(help="Force an image rebuild even if cached.")] = False,
+) -> None:
+    """Prove the task is solvable: apply patch.diff and confirm fail2pass flips, pass2pass holds.
+
+    Runs the same baseline -> apply -> grade pipeline as `task run`, driving a
+    deterministic stub solver with the bundle's golden patch. It is an authoring
+    check (sibling to `validate`), so it records no solver run — only a command with
+    its per-phase test results. Exits 2 if the golden patch does not cleanly resolve
+    the task, naming each fail2pass test it fails to flip and each pass2pass it breaks.
+    """
+    with record_command("verify-gold", bundle_path) as rec:
+        bundle = Bundle.load(bundle_path)
+        bundle.test_format()
+        gold = bundle.gold_patch_path
+        if not gold.is_file():
+            raise TaskError(
+                f"No golden patch at {gold}. `verify-gold` needs a patch.diff in the bundle "
+                "(import-swebench writes one; otherwise add it by hand)."
+            )
+        docker = Docker()
+        docker.ensure_available()
+        with console.status("Ensuring task image..."):
+            tag, build_log = ensure_image(docker, bundle, rebuild=rebuild)
+        if build_log:
+            rec.save_artifact("build_log", "image_build.log", build_log)
+        with console.status("Running baseline -> apply gold -> grade..."):
+            outcome = execute_run(docker, bundle, tag, StubSolver(gold), rec.artifact_dir)
+
+        rec.add_test_results("baseline", outcome.baseline)
+        rec.add_test_results("post_gold", outcome.post_solver)
+        rec.save_artifact(
+            "test_output",
+            "verify_gold_tests.txt",
+            "\n".join(
+                f"=== {e.test} [{e.bucket}] {phase}: {e.status} ===\n{e.output}"
+                for phase, execs in (
+                    ("baseline", outcome.baseline),
+                    ("post_gold", outcome.post_solver),
+                )
+                for e in execs
+            ),
+        )
+
+        baseline = consolidate(outcome.baseline)
+        baseline_status = {r.test: r.status for r in baseline}
+        table = Table(title=f"verify-gold: {bundle.spec.id}")
+        for col in ("Test", "Bucket", "Baseline", "After gold"):
+            table.add_column(col)
+        for r in outcome.results:
+            ok = r.status == "passed"
+            style = "green" if ok else "red"
+            table.add_row(
+                r.test, r.bucket, baseline_status.get(r.test, "?"), f"[{style}]{r.status}[/{style}]"
+            )
+        console.print(table)
+
+        problems = check_gold_contract(baseline, outcome.results)
+        if problems:
+            for p in problems:
+                rec.log(f"gold verification failed: {p}")
+                console.print(f"[bold red]gold verification failed:[/bold red] {p}")
+            raise ContractViolation(
+                f"golden patch does not resolve task {bundle.spec.id} "
+                f"({len(problems)} problem(s) above)."
+            )
+        rec.log(f"gold verification passed ({len(outcome.results)} tests)")
+        console.print(
+            f"[green]Golden patch verified[/green] for [bold]{bundle.spec.id}[/bold]: "
+            "all fail2pass flip to pass, all pass2pass hold. The task is solvable."
+        )
+
+
 @app.command("import-swebench")
 def import_swebench(
     instance_id: Annotated[str, typer.Argument(help="SWE-bench Pro instance id (HuggingFace).")],
@@ -562,6 +646,177 @@ def logs(
             console.print(log_path.read_text().rstrip() or "(empty)")
     finally:
         db.close()
+
+
+@app.command()
+def diff(
+    run_id: Annotated[str, typer.Argument(help="Run id whose solver patch to print.")],
+) -> None:
+    """Print the unified diff a run's solver produced (raw, pipeable to `git apply`)."""
+    db = Database(settings.db_path)
+    try:
+        run = db.get_run(run_id)
+        if run is None:
+            raise TaskError(
+                f"No run {run_id!r} in {settings.db_path}. Use `task runs list` to see ids."
+            )
+        artifact = next(
+            (a for a in db.artifacts_for(run["command_id"]) if a["type"] == "solver_diff"), None
+        )
+        if artifact is None:
+            raise TaskError(
+                f"Run {run_id} has no stored diff (it likely errored before the solve phase)."
+            )
+        diff_text = Path(artifact["path"]).read_text()
+    finally:
+        db.close()
+    if diff_text.strip():
+        console.print(diff_text, markup=False, highlight=False, soft_wrap=True, end="")
+    else:
+        console.print(f"[dim]Run {run_id} produced no changes (empty diff).[/dim]")
+
+
+@app.command()
+def clean(
+    bundle_path: Annotated[
+        Path | None, typer.Argument(help="Bundle to clean (its image + workspace clone).")
+    ] = None,
+    run_id: Annotated[
+        str | None, typer.Option("--run", help="Remove a single run's artifacts directory.")
+    ] = None,
+    all_: Annotated[
+        bool, typer.Option("--all", help="Remove ALL task-bundle images and the artifacts dir.")
+    ] = False,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip the confirmation prompt.")] = False,
+) -> None:
+    """Reclaim disk: remove task-bundle images, workspace clones, and run artifacts.
+
+    Exactly one target: a bundle path, --run <id>, or --all. Always previews what it
+    will delete and prompts for confirmation unless --yes is given. The SQLite log is
+    never touched, so `task logs`/`task runs` history survives a clean.
+    """
+    if sum([bundle_path is not None, run_id is not None, all_]) != 1:
+        raise TaskError("Pass exactly one of: a bundle path, --run <id>, or --all.")
+
+    docker = Docker()
+    images: list[str] = []
+    dirs: list[Path] = []
+
+    if all_:
+        images = docker.list_images(f"{IMAGE_REPO}/")
+        if settings.artifacts_dir.exists():
+            dirs = [settings.artifacts_dir]
+    elif run_id is not None:
+        db = Database(settings.db_path)
+        try:
+            run = db.get_run(run_id)
+            if run is None:
+                raise TaskError(
+                    f"No run {run_id!r} in {settings.db_path}. Use `task runs list` to see ids."
+                )
+            command_dir = settings.artifacts_dir / run["command_id"]
+        finally:
+            db.close()
+        if command_dir.exists():
+            dirs = [command_dir]
+    else:
+        assert bundle_path is not None
+        bundle = Bundle.load(bundle_path)
+        images = docker.list_images(f"{IMAGE_REPO}/{bundle.spec.id}:")
+        if bundle.workspace_dir.exists():
+            dirs = [bundle.workspace_dir]
+
+    if not images and not dirs:
+        console.print("Nothing to remove.")
+        return
+
+    console.print("[bold]Will remove:[/bold]")
+    for image in images:
+        console.print(f"  image     {image}")
+    for directory in dirs:
+        console.print(f"  directory {directory}")
+    if not yes and not typer.confirm("Proceed?"):
+        raise typer.Abort()
+
+    for image in images:
+        docker.rmi(image)
+    for directory in dirs:
+        shutil.rmtree(directory, ignore_errors=True)
+
+    if bundle_path is not None:
+        bundle = Bundle.load(bundle_path)
+        state = bundle.load_state()
+        state.status = "scaffolded"
+        state.image_tag = None
+        state.image_digest = None
+        bundle.save_state(state)
+
+    console.print(
+        f"[green]Removed[/green] {len(images)} image(s) and {len(dirs)} director(y/ies)."
+    )
+
+
+_DISK_WARN_GB = 5.0
+
+
+def _existing_ancestor(path: Path) -> Path:
+    for candidate in (path, *path.parents):
+        if candidate.exists():
+            return candidate
+    return Path("/")
+
+
+def _check_docker() -> tuple[str, str, str]:
+    docker = Docker()
+    try:
+        docker.ensure_available()
+    except DockerError as e:
+        return ("Docker daemon", "fail", str(e))
+    return ("Docker daemon", "ok", f"server {docker.version()}")
+
+
+def _check_git() -> tuple[str, str, str]:
+    try:
+        proc = subprocess.run(
+            ["git", "--version"], capture_output=True, text=True, timeout=30, check=False
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return ("git", "fail", "git not found on PATH")
+    if proc.returncode != 0:
+        return ("git", "fail", "git not found on PATH")
+    return ("git", "ok", proc.stdout.strip())
+
+
+def _check_api_key() -> tuple[str, str, str]:
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return ("ANTHROPIC_API_KEY", "ok", "set")
+    return ("ANTHROPIC_API_KEY", "warn", "unset — needed only for `task run --solver claude`")
+
+
+def _check_disk() -> tuple[str, str, str]:
+    free_gb = shutil.disk_usage(_existing_ancestor(settings.artifacts_dir)).free / 1e9
+    status = "warn" if free_gb < _DISK_WARN_GB else "ok"
+    return ("Disk space", status, f"{free_gb:.1f} GB free (task images are large)")
+
+
+@app.command()
+def doctor() -> None:
+    """Preflight environment checks. Exits 1 if a required dependency (Docker, git) is missing."""
+    results = [_check_docker(), _check_git(), _check_api_key(), _check_disk()]
+    styles = {"ok": "green", "warn": "yellow", "fail": "red"}
+    table = Table(title="task doctor")
+    for col in ("Check", "Status", "Detail"):
+        table.add_column(col)
+    for name, status, detail in results:
+        table.add_row(name, f"[{styles[status]}]{status.upper()}[/{styles[status]}]", detail)
+    console.print(table)
+    failures = [name for name, status, _ in results if status == "fail"]
+    if failures:
+        raise TaskError(
+            f"doctor found {len(failures)} blocking problem(s): {', '.join(failures)}. "
+            "Fix the FAIL rows above before running tasks."
+        )
+    console.print("[green]All required checks passed.[/green]")
 
 
 @runs_app.command("list")

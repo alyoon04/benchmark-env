@@ -98,6 +98,13 @@ class Docker:
     def rmi(self, tag: str) -> None:
         _docker(["rmi", "-f", tag], timeout=120)
 
+    def list_images(self, repo_prefix: str) -> list[str]:
+        """Return ``repository:tag`` for every image whose ref starts with ``repo_prefix``."""
+        proc = _docker(["images", "--format", "{{.Repository}}:{{.Tag}}"], timeout=60)
+        if proc.returncode != 0:
+            return []
+        return sorted(line for line in proc.stdout.splitlines() if line.startswith(repo_prefix))
+
     # -- containers ----------------------------------------------------------
 
     def run_detached(self, image: str, *, network_off: bool = True) -> str:
