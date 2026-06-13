@@ -24,7 +24,10 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def docker_available() -> bool:
     if shutil.which("docker") is None:
         return False
-    proc = subprocess.run(["docker", "info"], capture_output=True, timeout=30, check=False)
+    try:
+        proc = subprocess.run(["docker", "info"], capture_output=True, timeout=30, check=False)
+    except subprocess.TimeoutExpired:  # daemon up but busy (e.g. a large pull in flight)
+        return True
     return proc.returncode == 0
 
 

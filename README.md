@@ -7,8 +7,9 @@ isolation — with every command logged to a queryable SQLite database.
 > **Status: work in progress.** Built in reviewable milestones; see
 > [PROGRESS.md](PROGRESS.md) for what exists today and [DESIGN.md](DESIGN.md) for the
 > full architecture. Currently implemented: bundle spec, `task init` (with image
-> build), `task validate`, `task run` (stub + claude solvers), and SQLite command
-> logging with `task logs` / `task runs`.
+> build), `task validate`, `task run` (stub + claude solvers), SQLite command
+> logging with `task logs` / `task runs`, and `task import-swebench` (verified
+> end-to-end on a real SWE-bench Pro instance — see `evaluation/`).
 
 ## Why
 
@@ -132,7 +133,7 @@ gets a fresh container so runs cannot contaminate each other.
 | `task logs [<command-id>]` | ✅ | No argument: list recent commands. With an id: show argv, exit code, per-test results, artifacts, and the command log. |
 | `task runs list` / `task runs show <run-id>` | ✅ | Query solver runs (populated by `task run`, milestone 4). |
 | `task run <bundle> [--solver stub\|claude] [--patch FILE \| --gold] [--model M] [--max-iterations N] [--rebuild]` | ✅ | Baseline → solve → grade in separate containers; before/after table, RESOLVED/UNRESOLVED verdict, sorted-key `report.json` + `solver.diff`/transcript artifacts, run + token/cost stats recorded in DB. `claude` solver needs `ANTHROPIC_API_KEY`. |
-| `task import-swebench <instance-id>` | planned (M6) | Convert a SWE-bench Pro instance into a bundle. |
+| `task import-swebench <instance-id> [--dest DIR] [--test-command TPL] [--timeout N] [--no-init]` | ✅ | Convert a public SWE-bench Pro instance (ScaleAI/SWE-bench_Pro on HuggingFace) into a ready-to-validate bundle: prebuilt instance image as base, hidden tests as test patch + explicit f2p/p2p ids, gold patch saved as `patch.diff`. See `evaluation/` for a real end-to-end run. |
 | `task verify-gold` / `task diff` / `task doctor` / `task clean` | planned (M7) | Authoring and ops helpers. |
 
 ## Observability

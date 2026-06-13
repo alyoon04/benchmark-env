@@ -1,11 +1,51 @@
 """Tests for cleaned-tree construction and the hidden-content leak guard."""
 
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from task_bundle.errors import HiddenTestLeak
-from task_bundle.workspace import assert_no_hidden_content, build_clean_tree, resolve_repo_url
+from task_bundle.workspace import (
+    apply_patch,
+    assert_no_hidden_content,
+    build_clean_tree,
+    patch_changed_paths,
+    resolve_repo_url,
+)
+
+PATCH = """\
+diff --git a/pkg/mod.py b/pkg/mod.py
+--- a/pkg/mod.py
++++ b/pkg/mod.py
+@@ -1 +1 @@
+-old = 1
++old = 2
+"""
+
+
+class TestGitInsideForeignRepo:
+    """git operations must ignore an unrelated enclosing repo (e.g. a git-managed $HOME).
+
+    Inside a foreign repo, `git apply` silently skips every patch path outside the
+    cwd prefix and exits 0 — numstat returns nothing and apply becomes a no-op.
+    """
+
+    @pytest.fixture()
+    def inside_repo(self, tmp_path: Path) -> Path:
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        work = tmp_path / "deep" / "work"
+        (work / "pkg").mkdir(parents=True)
+        (work / "pkg/mod.py").write_text("old = 1\n")
+        (work / "p.diff").write_text(PATCH)
+        return work
+
+    def test_patch_changed_paths(self, inside_repo: Path) -> None:
+        assert patch_changed_paths(inside_repo / "p.diff") == ["pkg/mod.py"]
+
+    def test_apply_patch(self, inside_repo: Path) -> None:
+        apply_patch(inside_repo, inside_repo / "p.diff")
+        assert (inside_repo / "pkg/mod.py").read_text() == "old = 2\n"
 
 
 def make_workspace(tmp_path: Path) -> Path:
@@ -55,7 +95,7 @@ class TestLeakGuard:
         hidden.write_text("def test_hidden(): assert deep_magic()\n")
         dest = tmp_path / "clean"
         build_clean_tree(ws, dest)
-        assert_no_hidden_content(dest, [hidden])  # must not raise
+        assert_no_hidden_content(dest, [hidden.read_bytes()])  # must not raise
 
     def test_identical_content_detected_under_any_name(self, tmp_path: Path) -> None:
         ws = make_workspace(tmp_path)
@@ -64,7 +104,7 @@ class TestLeakGuard:
         dest = tmp_path / "clean"
         build_clean_tree(ws, dest)  # test_secret.py copied in (not excluded)
         with pytest.raises(HiddenTestLeak, match="byte-identical"):
-            assert_no_hidden_content(dest, [hidden])
+            assert_no_hidden_content(dest, [hidden.read_bytes()])
 
     def test_same_name_different_content_is_fine(self, tmp_path: Path) -> None:
         ws = make_workspace(tmp_path)
@@ -72,7 +112,7 @@ class TestLeakGuard:
         hidden.write_text("def test_v(): assert new_behavior()\n")  # different bytes
         dest = tmp_path / "clean"
         build_clean_tree(ws, dest)
-        assert_no_hidden_content(dest, [hidden])  # must not raise
+        assert_no_hidden_content(dest, [hidden.read_bytes()])  # must not raise
 
 
 class TestResolveRepoUrl:

@@ -118,7 +118,10 @@ Enforcement is structural:
 
 1. **Construct-clean, never copy-then-delete.** The solver workspace is built by
    copying the baseline repo from `.task/workspace/` with hidden test paths *excluded
-   from the copy* (and test_patch targets stripped for SWE-bench-format bundles).
+   from the copy*. For SWE-bench-format bundles the *baseline* versions of files the
+   test patch touches stay visible (that is what the repo at the pinned commit
+   contains — real SWE-bench semantics); what is hidden is the patch itself and the
+   *patched* versions, enforced by the content leak guard.
    Nothing to delete ⇒ nothing lingering in image layers.
 2. **`.git` is scrubbed** from the solver workspace. The repo's history could contain
    the test files (SWE-bench test patches come from a future commit, but defense in

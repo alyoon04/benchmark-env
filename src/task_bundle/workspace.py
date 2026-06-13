@@ -25,6 +25,12 @@ _SNAPSHOT_ENV = {
 
 def _git(args: list[str], cwd: Path, timeout: int = 600, env: dict[str, str] | None = None) -> str:
     cmd = ["git", *args]
+    # Every call site operates on a repo at cwd or on plain files (apply/numstat).
+    # Stop upward .git discovery so an unrelated enclosing repo (e.g. a git-managed
+    # $HOME) can't hijack the invocation — inside a foreign repo, `git apply`
+    # silently skips paths outside the cwd prefix and exits 0. Ceiling entries must
+    # be proper ancestors of the search start, hence the parent.
+    ceiling = {"GIT_CEILING_DIRECTORIES": str(Path(cwd).resolve().parent)}
     try:
         proc = subprocess.run(
             cmd,
@@ -33,7 +39,7 @@ def _git(args: list[str], cwd: Path, timeout: int = 600, env: dict[str, str] | N
             text=True,
             timeout=timeout,
             check=False,
-            env={**os.environ, **env} if env else None,
+            env={**os.environ, **ceiling, **(env or {})},
         )
     except FileNotFoundError as e:
         raise GitError("git executable not found on PATH. Install git and retry.") from e
@@ -142,14 +148,20 @@ def apply_patch(tree: Path, patch: Path) -> None:
         ) from e
 
 
-def assert_no_hidden_content(tree: Path, hidden_files: list[Path]) -> None:
-    """Abort if any hidden test's exact content appears anywhere in ``tree``.
+def patch_changed_paths(patch: Path) -> list[str]:
+    """Repo-relative paths a unified diff touches (via ``git apply --numstat``)."""
+    out = _git(["apply", "--numstat", str(patch)], cwd=patch.parent)
+    return [line.split("\t", 2)[2] for line in out.splitlines() if line.strip()]
+
+
+def assert_no_hidden_content(tree: Path, hidden_blobs: list[bytes]) -> None:
+    """Abort if any hidden blob's exact content appears anywhere in ``tree``.
 
     Pre-flight guard run on solver-visible trees. Content comparison (not name
     comparison) because a same-named file with different content is legitimate,
     while identical bytes under any name is a leak.
     """
-    hidden_contents = {f.read_bytes() for f in hidden_files}
+    hidden_contents = set(hidden_blobs)
     for path in tree.rglob("*"):
         if path.is_file() and path.read_bytes() in hidden_contents:
             raise HiddenTestLeak(

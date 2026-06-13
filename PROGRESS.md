@@ -8,8 +8,8 @@
 - [x] 3. SQLite logging + `task logs` / `task runs list|show`
 - [x] 4. `task run` with StubSolver (two-phase run, grading, JSON report)
 - [x] 5. `task run` with ClaudeSolver (agentic loop, capped)
-- [ ] 6. End-to-end on real SWE-bench Pro instance (`task import-swebench`) ← **next**
-- [ ] 7. Extra commands: `verify-gold`, `diff`, `doctor`, `clean`
+- [x] 6. End-to-end on real SWE-bench Pro instance (`task import-swebench`)
+- [ ] 7. Extra commands: `verify-gold`, `diff`, `doctor`, `clean` ← **next**
 - [ ] 8. Polish: README, DESIGN_NOTES.md, CI, final checklist
 
 ## Decisions made
@@ -49,20 +49,28 @@
 | Model paths confined by _safe_path (normpath under /workspace, .. rejected) | Tool layer tidiness on top of container confinement |
 | ClaudeSolver budgets: max_iterations (30), wall-clock (1800s), per-call max_tokens, tool-output truncation | Bounded cost/time even on runaway loops |
 | API client injected via protocol; scripted fake drives the real-container docker test | Full loop tested deterministically; live API only for hand verification |
+| TEST_PATCH staging: patch applied host-side to a clean baseline copy, only the changed files docker-cp'd in; staged refs are the bundle's explicit test ids | Patch tooling never required inside the image; nothing hidden enters a layer |
+| TEST_PATCH solver visibility: baseline versions of patch-touched files stay visible; hidden = the patch + the *patched* file versions (leak guard now compares byte blobs, not files) | Real SWE-bench semantics: the repo at the pinned commit is exactly what the solver gets |
+| import-swebench fetches rows via the HF datasets-server JSON API (filter endpoint, row-scan fallback incl. on HTTP 500) | No heavyweight `datasets` dep; the filter endpoint 500s intermittently |
+| Imported bundles use the prebuilt instance image + `rm -rf /app && ln -s /workspace /app` setup command + `HOME=/tmp` env | Deps in the image are installed against /app (editable); the symlink makes tests import the /workspace tree the solver edits — engine stays generic, fix is bundle data |
+| `run_detached` pins `--entrypoint sleep` | sweap images set `ENTRYPOINT ["/bin/bash"]`, which mangled the idle command into `bash sleep infinity` |
+| `_git` sets `GIT_CEILING_DIRECTORIES` to cwd's parent on every invocation | A foreign enclosing repo (e.g. a git-managed $HOME) made `git apply` silently skip every patch path and exit 0 — numstat returned nothing, staging no-opped, and the f2p test "passed" on baseline |
+| `docker info` timeout treated as "daemon available" (ensure_available + test skip probe) | A large pull in flight can make the daemon slow to answer info while still serving runs |
 
 ## Current state
 
-Milestone 5 complete (live hand-test pending API key): `task run --solver claude
-[--model M] [--max-iterations N]` runs the agentic loop — tools execute in the
-hardened container, workspace syncs out for diffing, tokens/cost recorded in the
-runs row and report stats. Missing-key and ERROR-verdict paths covered. 92 tests
-(7 docker-marked incl. a scripted-client full-loop test), ruff + mypy --strict clean.
+Milestone 6 complete: `task import-swebench` converts a public SWE-bench Pro
+instance into a TEST_PATCH-format bundle, and the full pipeline ran end-to-end on
+a real instance (ansible/ansible, 1 f2p + 15 p2p): validate holds 3x consistent,
+stub gold run -> RESOLVED, stub no-op -> UNRESOLVED; reports committed under
+`evaluation/ansible-combine-vars/`. Three real bugs found and fixed along the way
+(image ENTRYPOINT, foreign-enclosing-repo git apply, HF filter-endpoint 500s).
+103 tests (8 docker-marked), ruff + mypy --strict clean.
 
-## Next steps (milestone 6)
+## Next steps (milestone 7)
 
-1. `task import-swebench <instance-id>`: fetch ScaleAI/SWE-bench_Pro (HF) row ->
-   bundle with test_patch + f2p/p2p ids; pick a small instance.
-2. Implement TEST_PATCH-format staging/execution (apply test patch in eval container,
-   run named test ids) in harness + validate + run.
-3. End-to-end: init -> validate -> stub gold run (RESOLVED) -> stub no-op (UNRESOLVED)
-   -> query DB; commit the JSON reports as evaluation artifacts.
+1. `task verify-gold <bundle>`: apply patch.diff, confirm f2p flips and p2p holds
+   (shares the run pipeline with a gold StubSolver; no run row, or a flagged one).
+2. `task diff <run-id>`: print the stored solver diff for a run.
+3. `task doctor`: docker daemon, git version, API key presence, disk space.
+4. `task clean <bundle> | --run RUN_ID | --all`: remove images/workspaces/artifacts.

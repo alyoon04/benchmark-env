@@ -215,6 +215,11 @@ class Bundle:
         return self.path / GOLD_PATCH
 
     @property
+    def test_patch_path(self) -> Path:
+        """Location of the SWE-bench-style test patch (TEST_PATCH format only)."""
+        return self.path / (self.spec.tests.test_patch or "tests/test_patch.diff")
+
+    @property
     def fail2pass_dir(self) -> Path:
         return self.path / FAIL2PASS_DIR
 

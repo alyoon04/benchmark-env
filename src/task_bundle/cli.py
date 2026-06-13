@@ -22,12 +22,13 @@ from task_bundle import __version__
 from task_bundle.bundle import Bundle, utc_now_iso
 from task_bundle.container import Docker
 from task_bundle.db import Database, new_id
-from task_bundle.errors import ContractViolation, TaskError
+from task_bundle.errors import BundleError, ContractViolation, TaskError
 from task_bundle.grading import FLAKY, TestExecution, check_baseline_contract, consolidate
 from task_bundle.harness import ensure_image, run_baseline_suites, smoke_test
 from task_bundle.report import build_report, tool_versions, write_report
 from task_bundle.run import execute_run
 from task_bundle.solver import ClaudeSolver, Solver, StubSolver
+from task_bundle.swebench import convert_instance, fetch_instance
 from task_bundle.workspace import clone_at_commit, resolve_repo_url
 
 app = typer.Typer(
@@ -218,11 +219,17 @@ def init(
         state.status = "initialized"
         state.initialized_at = utc_now_iso()
         bundle.save_state(state)
+        try:
+            bundle.test_format()
+            next_step = "run [bold]task validate[/bold]"
+        except BundleError:
+            next_step = (
+                "add hidden tests under tests/fail2pass/ and tests/pass2pass/, "
+                "then run [bold]task validate[/bold]"
+            )
         console.print(
             f"[green]Initialized[/green] task [bold]{bundle.spec.id}[/bold] "
-            f"(workspace pinned to {bundle.spec.repo.commit[:12]}).\n"
-            "Next: add hidden tests under tests/fail2pass/ and tests/pass2pass/, "
-            "then run [bold]task validate[/bold]."
+            f"(workspace pinned to {bundle.spec.repo.commit[:12]}).\nNext: {next_step}."
         )
 
 
@@ -446,6 +453,45 @@ def run(
         rec.log(f"run {run_id} verdict: {outcome.verdict}")
         console.print(f"report: {report_path}")
         console.print(f"[dim]run id: {run_id} (task runs show {run_id})[/dim]")
+
+
+@app.command("import-swebench")
+def import_swebench(
+    instance_id: Annotated[str, typer.Argument(help="SWE-bench Pro instance id (HuggingFace).")],
+    dest: Annotated[
+        Path | None, typer.Option(help="Bundle directory to create (default: ./<instance-id>).")
+    ] = None,
+    test_command: Annotated[
+        str | None, typer.Option(help="Override the per-language default test command.")
+    ] = None,
+    timeout: Annotated[int, typer.Option(help="Per-test timeout in seconds.")] = 600,
+    init_after: Annotated[
+        bool,
+        typer.Option("--init/--no-init", help="Run task init (clone + image) after conversion."),
+    ] = True,
+) -> None:
+    """Convert a ScaleAI/SWE-bench_Pro instance into a ready-to-validate bundle.
+
+    Uses the instance's prebuilt Docker image (jefzda/sweap-images) as the base, the
+    test patch + explicit fail2pass/pass2pass ids as hidden tests, and the gold
+    patch as patch.diff (so `task run --gold` proves solvability).
+    """
+    bundle_dir = dest or Path(instance_id)
+    with record_command("import-swebench", bundle_dir) as rec:
+        console.print(f"Fetching [bold]{instance_id}[/bold] from HuggingFace ...")
+        row = fetch_instance(instance_id)
+        bundle = convert_instance(row, bundle_dir, test_command=test_command, timeout=timeout)
+        rec.log(f"converted {instance_id} -> {bundle.path}")
+        console.print(
+            f"[green]Converted[/green] to bundle [bold]{bundle.path}[/bold] "
+            f"({len(bundle.spec.tests.fail2pass_ids)} fail2pass, "
+            f"{len(bundle.spec.tests.pass2pass_ids)} pass2pass tests, "
+            f"base image {bundle.spec.environment.base_image.split(':')[0]}:...)"
+        )
+    if init_after:
+        init(bundle_dir)
+    else:
+        console.print(f"Next: task init {bundle_dir} && task validate {bundle_dir}")
 
 
 @app.command()

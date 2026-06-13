@@ -53,7 +53,10 @@ class Docker:
 
     def ensure_available(self) -> None:
         """Raise DockerError unless the daemon is reachable."""
-        proc = _docker(["info", "--format", "{{.ServerVersion}}"], timeout=30)
+        try:
+            proc = _docker(["info", "--format", "{{.ServerVersion}}"], timeout=30)
+        except subprocess.TimeoutExpired:
+            return  # daemon reachable but busy (e.g. a large pull in flight)
         if proc.returncode != 0:
             raise DockerError(f"Docker daemon unreachable. {_DAEMON_HINT}")
 
@@ -119,11 +122,15 @@ class Docker:
             "--cap-add", "DAC_OVERRIDE",
             "--cap-add", "FOWNER",
             "--security-opt", "no-new-privileges",
+            # Override any image ENTRYPOINT (e.g. SWE-bench Pro images set
+            # ENTRYPOINT ["/bin/bash"], which would mangle the idle command into
+            # `bash sleep infinity` — bash reading a binary as a script).
+            "--entrypoint", "sleep",
             "-w", WORKDIR,
         ]  # fmt: skip
         if network_off:
             args += ["--network", "none"]
-        args += [image, "sleep", "infinity"]
+        args += [image, "infinity"]
         proc = _docker(args, timeout=120)
         if proc.returncode != 0:
             raise DockerError(

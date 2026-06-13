@@ -19,7 +19,7 @@ from task_bundle.bundle import Bundle, HiddenTestFormat
 from task_bundle.container import WORKDIR, Docker
 from task_bundle.errors import BundleError, DockerError
 from task_bundle.grading import Bucket, Status, TestExecution
-from task_bundle.workspace import build_clean_tree
+from task_bundle.workspace import apply_patch, build_clean_tree, patch_changed_paths
 
 IMAGE_REPO = "task-bundle"
 BASELINE_ATTEMPTS = 3
@@ -101,16 +101,16 @@ def smoke_test(docker: Docker, tag: str) -> None:
 
 
 def stage_hidden_tests(docker: Docker, bundle: Bundle, container_id: str) -> dict[str, Bucket]:
-    """Copy hidden tests into a running container; return staged path -> bucket.
+    """Materialize hidden tests inside a running container; return test ref -> bucket.
 
-    Only the directories format is executable today; the SWE-bench test-patch format
-    is wired in with `task import-swebench` (milestone 6).
+    DIRECTORIES format: hidden test files are copied into the staging dir and the
+    returned refs are their workdir-relative paths. TEST_PATCH format: the test
+    patch is applied to a host-side copy of the baseline and only the changed files
+    are copied in; the returned refs are the bundle's explicit test ids. Either way
+    nothing hidden ever enters an image layer.
     """
     if bundle.test_format() is HiddenTestFormat.TEST_PATCH:
-        raise BundleError(
-            "This bundle uses the SWE-bench test-patch format, which `task validate` "
-            "does not execute yet (lands with `task import-swebench`)."
-        )
+        return _stage_test_patch(docker, bundle, container_id)
     staging_rel = bundle.spec.tests.staging_dir.strip("/")
     staging_root = f"{WORKDIR}/{staging_rel}"
     docker.exec(container_id, f"mkdir -p {shlex.quote(staging_root)}", timeout=30, user="0")
@@ -155,6 +155,54 @@ def execute_staged_suite(
             )
         )
     return executions
+
+
+def _stage_test_patch(docker: Docker, bundle: Bundle, container_id: str) -> dict[str, Bucket]:
+    """Apply the test patch host-side and copy the changed files into the container."""
+    changed = patch_changed_paths(bundle.test_patch_path)
+    with tempfile.TemporaryDirectory(prefix="task-bundle-testpatch-") as tmp:
+        tree = Path(tmp) / "tree"
+        build_clean_tree(bundle.workspace_dir, tree)
+        apply_patch(tree, bundle.test_patch_path)
+        for rel in changed:
+            src = tree / rel
+            dest = f"{WORKDIR}/{rel}"
+            if not src.exists():  # the test patch deleted this file
+                docker.exec(container_id, f"rm -f {shlex.quote(dest)}", timeout=30, user="0")
+                continue
+            parent = f"{WORKDIR}/{Path(rel).parent}".rstrip("/.")
+            docker.exec(container_id, f"mkdir -p {shlex.quote(parent)}", timeout=30, user="0")
+            docker.cp_in(container_id, src, dest)
+            docker.exec(container_id, f"chown 1000:1000 {shlex.quote(dest)}", timeout=30, user="0")
+    spec = bundle.spec.tests
+    staged: dict[str, Bucket] = dict.fromkeys(spec.fail2pass_ids, "fail2pass")
+    staged.update(dict.fromkeys(spec.pass2pass_ids, "pass2pass"))
+    return staged
+
+
+def hidden_blobs(bundle: Bundle) -> list[bytes]:
+    """Byte contents that must never appear in a solver-visible tree.
+
+    DIRECTORIES: each hidden test file. TEST_PATCH: the patch itself plus the
+    *patched* versions of every file it touches (the baseline versions remain
+    visible by design — the repo at the pinned commit is what the solver gets).
+    """
+    if bundle.test_format() is HiddenTestFormat.DIRECTORIES:
+        return [
+            f.read_bytes()
+            for bucket in ("fail2pass", "pass2pass")
+            for f in bundle.hidden_test_files(bucket)  # type: ignore[arg-type]
+        ]
+    blobs = [bundle.test_patch_path.read_bytes()]
+    with tempfile.TemporaryDirectory(prefix="task-bundle-hidden-") as tmp:
+        tree = Path(tmp) / "tree"
+        build_clean_tree(bundle.workspace_dir, tree)
+        apply_patch(tree, bundle.test_patch_path)
+        for rel in patch_changed_paths(bundle.test_patch_path):
+            patched = tree / rel
+            if patched.exists():
+                blobs.append(patched.read_bytes())
+    return blobs
 
 
 def run_baseline_suites(

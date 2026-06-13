@@ -26,7 +26,7 @@ from task_bundle.grading import (
     consolidate,
     run_verdict,
 )
-from task_bundle.harness import execute_staged_suite, overlay_tree_into_container
+from task_bundle.harness import execute_staged_suite, hidden_blobs, overlay_tree_into_container
 from task_bundle.solver.base import SolveContext, Solver, SolveResult
 from task_bundle.workspace import (
     assert_no_hidden_content,
@@ -55,7 +55,7 @@ def execute_run(
 ) -> RunOutcome:
     """Run the full baseline -> solve -> grade pipeline for one solver attempt."""
     started_at = utc_now_iso()
-    hidden = bundle.hidden_test_files("fail2pass") + bundle.hidden_test_files("pass2pass")
+    hidden = hidden_blobs(bundle)
 
     # Phase 1: baseline statuses (fresh container, hidden tests staged at the end).
     cid = docker.run_detached(tag)
