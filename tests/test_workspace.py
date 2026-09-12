@@ -12,6 +12,7 @@ from task_bundle.workspace import (
     build_clean_tree,
     patch_changed_paths,
     resolve_repo_url,
+    tree_manifest,
 )
 
 PATCH = """\
@@ -89,13 +90,16 @@ class TestBuildCleanTree:
 
 
 class TestLeakGuard:
+    """The guard runs over the solve container's content manifest (path -> sha256);
+    ``tree_manifest`` produces the identical structure from a host directory."""
+
     def test_clean_tree_passes(self, tmp_path: Path) -> None:
         ws = make_workspace(tmp_path)
         hidden = tmp_path / "hidden_test.py"
         hidden.write_text("def test_hidden(): assert deep_magic()\n")
         dest = tmp_path / "clean"
         build_clean_tree(ws, dest)
-        assert_no_hidden_content(dest, [hidden.read_bytes()])  # must not raise
+        assert_no_hidden_content(tree_manifest(dest), [hidden.read_bytes()])  # must not raise
 
     def test_identical_content_detected_under_any_name(self, tmp_path: Path) -> None:
         ws = make_workspace(tmp_path)
@@ -103,8 +107,8 @@ class TestLeakGuard:
         hidden.write_text((ws / "tests/test_secret.py").read_text())
         dest = tmp_path / "clean"
         build_clean_tree(ws, dest)  # test_secret.py copied in (not excluded)
-        with pytest.raises(HiddenTestLeak, match="byte-identical"):
-            assert_no_hidden_content(dest, [hidden.read_bytes()])
+        with pytest.raises(HiddenTestLeak, match=r"tests/test_secret\.py.*byte-identical"):
+            assert_no_hidden_content(tree_manifest(dest), [hidden.read_bytes()])
 
     def test_same_name_different_content_is_fine(self, tmp_path: Path) -> None:
         ws = make_workspace(tmp_path)
@@ -112,7 +116,7 @@ class TestLeakGuard:
         hidden.write_text("def test_v(): assert new_behavior()\n")  # different bytes
         dest = tmp_path / "clean"
         build_clean_tree(ws, dest)
-        assert_no_hidden_content(dest, [hidden.read_bytes()])  # must not raise
+        assert_no_hidden_content(tree_manifest(dest), [hidden.read_bytes()])  # must not raise
 
 
 class TestResolveRepoUrl:

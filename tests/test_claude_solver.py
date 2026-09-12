@@ -2,8 +2,8 @@
 
 The docker-marked test drives the full agentic loop against a real container:
 scripted tool calls read calc.py, write the fix, verify with run_command, then
-finish — proving tool execution, workspace sync-out, and budget accounting without
-LLM nondeterminism.
+finish — proving tool execution, in-place changeset capture, and budget accounting
+without LLM nondeterminism.
 """
 
 from pathlib import Path
@@ -72,13 +72,16 @@ class TestUnitBehavior:
         with pytest.raises(SolverError, match="ANTHROPIC_API_KEY"):
             ClaudeSolver()._messages()
 
-    def test_safe_path_confines_to_workspace(self) -> None:
-        assert _safe_path("calc.py") == "/workspace/calc.py"
-        assert _safe_path("./tests/x.py") == "/workspace/tests/x.py"
-        assert _safe_path("/calc.py") == "/workspace/calc.py"  # absolute treated as repo-rooted
+    def test_safe_path_confines_to_repo_dir(self) -> None:
+        assert _safe_path("calc.py", "/workspace") == "/workspace/calc.py"
+        assert _safe_path("./tests/x.py", "/workspace") == "/workspace/tests/x.py"
+        # absolute paths are treated as repo-rooted
+        assert _safe_path("/calc.py", "/workspace") == "/workspace/calc.py"
+        assert _safe_path("/app/calc.py", "/app") == "/app/app/calc.py"
+        assert _safe_path("calc.py", "/app") == "/app/calc.py"
         for escape in ("../../etc/passwd", "a/../../etc", ".."):
             with pytest.raises(ValueError, match="escapes"):
-                _safe_path(escape)
+                _safe_path(escape, "/workspace")
 
     def test_model_resolution(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
@@ -139,3 +142,47 @@ def test_scripted_agentic_run_resolves(
     )
     assert "model finished after 3 iteration(s)" in Path(transcript_artifact["path"]).read_text()
     assert "+    return a / b" in Path(report_artifact["path"]).read_text()
+
+
+@pytest.mark.docker
+def test_scripted_run_captures_deletions_and_ignores_bytecode(
+    tmp_path: Path,
+    shared_origin: tuple[str, str],
+    isolated_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """In-place changeset: a deleted file is really gone at grade time and appears in
+    the diff as a deletion; a new file appears as a creation; the __pycache__ that
+    the model's run_command leaves behind is not part of the changeset."""
+    bundle = make_initialized_bundle(tmp_path / "b", shared_origin, f2p=F2P_TEST, p2p=P2P_TEST)
+    client = ScriptedClient(
+        [
+            _msg(
+                _tool("write_file", "t1", path="calc.py", content=FIXED_CALC),
+                _tool("write_file", "t2", path="docs/NOTES.md", content="fixed divide\n"),
+                _tool("run_command", "t3", command="rm README.md && python -c 'import calc'"),
+                _tool("run_command", "t4", command="ls __pycache__"),
+            ),
+            _msg(_text("Done.")),
+        ]
+    )
+    solver = ClaudeSolver(client=client)
+    monkeypatch.setattr("task_bundle.cli._make_solver", lambda *args, **kwargs: solver)
+    result = runner.invoke(app, ["run", str(bundle.path), "--solver", "claude"])
+    assert result.exit_code == 0, result.output
+    assert "RESOLVED" in result.output
+    assert "changed 1 file(s), added 1, deleted 1" in " ".join(result.output.split())
+    # the model saw bytecode in its container (so hygiene filtering is what hid it)
+    assert "calc.cpython" in client.requests[1]["messages"][-1]["content"][3]["content"]
+
+    db = Database(isolated_db)
+    run_row = db.list_runs()[0]
+    diff = Path(
+        next(a for a in db.artifacts_for(run_row["command_id"]) if a["type"] == "solver_diff")[
+            "path"
+        ]
+    ).read_text()
+    assert "--- a/README.md\n+++ /dev/null" in diff
+    assert "--- /dev/null\n+++ b/docs/NOTES.md" in diff
+    assert "+    return a / b" in diff
+    assert "__pycache__" not in diff

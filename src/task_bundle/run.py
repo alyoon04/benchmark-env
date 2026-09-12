@@ -1,15 +1,21 @@
-"""Two-phase solver run: solve (no hidden tests) -> snapshot diff -> grade.
+"""Two-phase solver run: solve in place (no hidden tests) -> changeset -> grade.
 
 The phases are structurally separated (DESIGN.md §3):
 
 1. **Baseline phase** — fresh container, hidden tests staged, suites run once to
    record per-test "before" statuses.
-2. **Solve phase** — a cleaned workspace tree (hidden tests excluded by
-   construction, .git scrubbed, leak-guard verified) is handed to the solver,
-   which mutates it. The orchestrator snapshots before and diffs after.
-3. **Grade phase** — a *fresh* evaluation container gets the solver's tree
-   overlaid onto /workspace, hidden tests are staged via docker cp, and suites
-   run once for "after" statuses. The solver never observes this container.
+2. **Solve phase** — a fresh container whose repo dir is the image's own tree
+   (leak-guard verified against a content manifest) is handed to the solver, which
+   mutates it in place. The orchestrator hashes the tree before and after; the
+   difference, filtered by the repo's .gitignore, is the solver's changeset.
+3. **Grade phase** — a *fresh* evaluation container gets the changeset replayed
+   into its repo dir (files copied in, deletions applied), hidden tests are staged
+   via docker cp, and suites run once for "after" statuses. The solver never
+   observes this container.
+
+Applying the changeset in place — rather than swapping in a clean clone — is what
+keeps everything that lives under the repo dir but outside git (submodules,
+``node_modules``, compiled extensions) intact for grading.
 
 No DB access here: the CLI layer persists the returned outcome.
 """
@@ -26,13 +32,21 @@ from task_bundle.grading import (
     consolidate,
     run_verdict,
 )
-from task_bundle.harness import execute_staged_suite, hidden_blobs, overlay_tree_into_container
+from task_bundle.harness import (
+    TaskImage,
+    apply_changeset,
+    execute_staged_suite,
+    hidden_blobs,
+    manifest,
+    pull_changes,
+)
 from task_bundle.solver.base import SolveContext, Solver, SolveResult
 from task_bundle.workspace import (
+    Changeset,
     assert_no_hidden_content,
-    build_clean_tree,
-    capture_diff,
-    snapshot_tree,
+    compute_changeset,
+    ignored_paths,
+    render_diff,
 )
 
 
@@ -42,6 +56,7 @@ class RunOutcome:
 
     verdict: str
     diff: str
+    changes: Changeset
     baseline: list[TestExecution]
     post_solver: list[TestExecution]
     results: list[ConsolidatedResult]  # consolidated post-solver results
@@ -50,54 +65,64 @@ class RunOutcome:
     finished_at: str
 
 
-def execute_run(
-    docker: Docker, bundle: Bundle, tag: str, solver: Solver, work_dir: Path
-) -> RunOutcome:
+def execute_run(docker: Docker, bundle: Bundle, image: TaskImage, solver: Solver) -> RunOutcome:
     """Run the full baseline -> solve -> grade pipeline for one solver attempt."""
     started_at = utc_now_iso()
     hidden = hidden_blobs(bundle)
 
     # Phase 1: baseline statuses (fresh container, hidden tests staged at the end).
-    cid = docker.run_detached(tag)
+    cid = docker.run_detached(image.tag)
     try:
-        baseline = execute_staged_suite(docker, bundle, cid)
+        baseline = execute_staged_suite(docker, bundle, image, cid)
     finally:
         docker.rm_force(cid)
 
-    # Phase 2: solve on a cleaned tree the solver may freely mutate.
-    solver_ws = work_dir / "solver_workspace"
-    build_clean_tree(bundle.workspace_dir, solver_ws, bundle.spec.solver.workspace_excludes)
-    assert_no_hidden_content(solver_ws, hidden)
-    snapshot_tree(solver_ws)
-    solve_result = solver.solve(
-        SolveContext(
-            workspace=solver_ws,
-            description=(
-                bundle.description_path.read_text() if bundle.description_path.is_file() else ""
-            ),
-            test_command_template=bundle.spec.tests.command_template,
-            timeout_seconds=bundle.spec.tests.timeout_seconds,
-            docker=docker,
-            image_tag=tag,
-        )
-    )
-    diff = capture_diff(solver_ws)
+    # Phase 2: solve in place. The container is the solver's workspace.
+    with tempfile.TemporaryDirectory(prefix="task-bundle-run-") as tmp:
+        work = Path(tmp)
+        cid = docker.run_detached(image.tag)
+        try:
+            before = manifest(docker, image, cid)
+            assert_no_hidden_content(before, hidden)
+            solve_result = solver.solve(
+                SolveContext(
+                    docker=docker,
+                    container_id=cid,
+                    repo_dir=image.repo_dir,
+                    baseline_tree=bundle.workspace_dir,
+                    description=(
+                        bundle.description_path.read_text()
+                        if bundle.description_path.is_file()
+                        else ""
+                    ),
+                    test_command_template=bundle.spec.tests.command_template,
+                    timeout_seconds=bundle.spec.tests.timeout_seconds,
+                )
+            )
+            after = manifest(docker, image, cid)
+            candidates = compute_changeset(before, after)
+            changes = compute_changeset(
+                before, after, ignored_paths(bundle.workspace_dir, candidates.all_paths)
+            )
+            pull_changes(docker, image, cid, changes.present, work / "after")
+        finally:
+            docker.rm_force(cid)
 
-    # Phase 3: grade in a fresh evaluation container.
-    cid = docker.run_detached(tag)
-    try:
-        with tempfile.TemporaryDirectory(prefix="task-bundle-solved-") as tmp:
-            solved_tree = Path(tmp) / "tree"
-            build_clean_tree(solver_ws, solved_tree)  # strips the orchestrator .git
-            overlay_tree_into_container(docker, solved_tree, cid)
-        post_solver = execute_staged_suite(docker, bundle, cid)
-    finally:
-        docker.rm_force(cid)
+        # Phase 3: grade in a fresh evaluation container.
+        cid = docker.run_detached(image.tag)
+        try:
+            pull_changes(docker, image, cid, changes.existed, work / "before")
+            diff = render_diff(work / "before", work / "after")
+            apply_changeset(docker, image, cid, changes, work / "after")
+            post_solver = execute_staged_suite(docker, bundle, image, cid)
+        finally:
+            docker.rm_force(cid)
 
     results = consolidate(post_solver)
     return RunOutcome(
         verdict=run_verdict(results),
         diff=diff,
+        changes=changes,
         baseline=baseline,
         post_solver=post_solver,
         results=results,

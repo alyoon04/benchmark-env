@@ -10,7 +10,9 @@ limits, all capabilities dropped, no-new-privileges. Hidden tests are staged wit
 ``cp_in`` into *running* containers only — they never enter an image layer.
 """
 
+import io
 import subprocess
+import tarfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +20,7 @@ from pathlib import Path
 from task_bundle.errors import DockerError
 
 WORKDIR = "/workspace"
+"""Default in-container repo path for native bundles (prebuilt images keep their own)."""
 SANDBOX_UID = "1000:1000"
 MEMORY_LIMIT = "4g"
 CPU_LIMIT = "2"
@@ -46,6 +49,22 @@ def _docker(args: list[str], timeout: int | None = None) -> subprocess.Completed
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
     except FileNotFoundError as e:
         raise DockerError("docker CLI not found on PATH. Install Docker and retry.") from e
+
+
+def _docker_bytes(
+    args: list[str], timeout: int | None = None
+) -> subprocess.CompletedProcess[bytes]:
+    """Like ``_docker`` but with binary stdout/stderr (for tar streams)."""
+    cmd = ["docker", *args]
+    try:
+        return subprocess.run(cmd, capture_output=True, timeout=timeout, check=False)
+    except FileNotFoundError as e:
+        raise DockerError("docker CLI not found on PATH. Install Docker and retry.") from e
+
+
+# docker exec passes argv through its API as JSON, so the practical bound is the
+# container's ARG_MAX; chunking keeps every batch comfortably inside it.
+ARGV_BATCH = 500
 
 
 class Docker:
@@ -121,12 +140,15 @@ class Docker:
 
     # -- containers ----------------------------------------------------------
 
-    def run_detached(self, image: str, *, network_off: bool = True) -> str:
+    def run_detached(
+        self, image: str, *, network_off: bool = True, workdir: str | None = None
+    ) -> str:
         """Start a hardened, idle container and return its id.
 
         The container runs ``sleep infinity`` so we can ``exec`` repeatedly; callers
         must ``rm_force`` it when done. Assumes ``sleep`` exists in the image (true
-        for any practical dev base image).
+        for any practical dev base image). ``workdir`` defaults to the image's own
+        WorkingDir, which task images set to the repo directory.
         """
         args = [
             "run", "-d", "--rm",
@@ -147,8 +169,9 @@ class Docker:
             # ENTRYPOINT ["/bin/bash"], which would mangle the idle command into
             # `bash sleep infinity` — bash reading a binary as a script).
             "--entrypoint", "sleep",
-            "-w", WORKDIR,
         ]  # fmt: skip
+        if workdir:
+            args += ["-w", workdir]
         if network_off:
             args += ["--network", "none"]
         args += [image, "infinity"]
@@ -166,10 +189,15 @@ class Docker:
         *,
         timeout: int,
         user: str | None = None,
-        workdir: str = WORKDIR,
+        workdir: str | None = None,
     ) -> ExecResult:
-        """Run ``command`` through ``sh -c`` inside the container."""
-        args = ["exec", "-w", workdir]
+        """Run ``command`` through ``sh -c`` inside the container.
+
+        ``workdir`` defaults to the container's working directory (the repo dir).
+        """
+        args = ["exec"]
+        if workdir:
+            args += ["-w", workdir]
         if user:
             args += ["--user", user]
         args += [container_id, "sh", "-c", command]
@@ -188,6 +216,83 @@ class Docker:
             output=proc.stdout + proc.stderr,
             duration_seconds=time.monotonic() - start,
         )
+
+    def exec_argv(
+        self,
+        container_id: str,
+        argv: list[str],
+        *,
+        timeout: int,
+        user: str | None = None,
+        workdir: str | None = None,
+    ) -> subprocess.CompletedProcess[bytes]:
+        """Run ``argv`` directly (no shell) inside the container; binary output.
+
+        For orchestrator commands over arbitrary path lists: argv is handed to the
+        docker API verbatim, so there is nothing to quote and no shell to trip on.
+        """
+        args = ["exec"]
+        if workdir:
+            args += ["-w", workdir]
+        if user:
+            args += ["--user", user]
+        args += [container_id, *argv]
+        try:
+            return _docker_bytes(args, timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            raise DockerError(
+                f"`{' '.join(argv[:3])} ...` in container {container_id[:12]} timed out "
+                f"after {timeout}s."
+            ) from e
+
+    def exec_argv_batched(
+        self,
+        container_id: str,
+        argv_prefix: list[str],
+        paths: list[str],
+        *,
+        timeout: int,
+        user: str | None = None,
+        workdir: str | None = None,
+    ) -> None:
+        """Run ``argv_prefix + <chunk of paths>`` for every chunk; raise on failure."""
+        for start in range(0, len(paths), ARGV_BATCH):
+            chunk = paths[start : start + ARGV_BATCH]
+            proc = self.exec_argv(
+                container_id, [*argv_prefix, *chunk], timeout=timeout, user=user, workdir=workdir
+            )
+            if proc.returncode != 0:
+                raise DockerError(
+                    f"`{' '.join(argv_prefix)} ...` failed in container {container_id[:12]} "
+                    f"(exit {proc.returncode}): {proc.stderr.decode(errors='replace').strip()}"
+                )
+
+    def archive(
+        self, container_id: str, workdir: str, paths: list[str], dest: Path, *, timeout: int = 600
+    ) -> None:
+        """Copy ``paths`` (relative to ``workdir``) out of the container into ``dest``.
+
+        One ``tar`` stream per batch instead of one ``docker cp`` per file: the
+        difference between seconds and many minutes when a solver touches thousands
+        of files. Missing paths are an error (callers pass paths they observed).
+        """
+        dest.mkdir(parents=True, exist_ok=True)
+        for start in range(0, len(paths), ARGV_BATCH):
+            chunk = [f"./{p}" for p in paths[start : start + ARGV_BATCH]]
+            proc = self.exec_argv(
+                container_id,
+                ["tar", "-cf", "-", *chunk],
+                timeout=timeout,
+                user="0",
+                workdir=workdir,
+            )
+            if proc.returncode != 0:
+                raise DockerError(
+                    f"tar in container {container_id[:12]} failed (exit {proc.returncode}): "
+                    f"{proc.stderr.decode(errors='replace').strip()}"
+                )
+            with tarfile.open(fileobj=io.BytesIO(proc.stdout), mode="r:") as tar:
+                tar.extractall(dest, filter="data")
 
     def cp_in(self, container_id: str, src: Path | str, dest: str) -> None:
         """Copy a host file/dir into the container (arrives root-owned; chown after).
