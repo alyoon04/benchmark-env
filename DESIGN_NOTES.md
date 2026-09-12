@@ -61,31 +61,38 @@ that defines both, or neither).
 
 ## 3. The test-hiding invariant (core correctness property)
 
-**Invariant: no hidden-test content ever enters the solver's workspace or image.**
+**Invariant: no hidden-test content ever enters the solver's container or any image
+layer.**
 
 Enforcement is *structural* — the design removes the opportunity to leak rather than
 relying on a cleanup step:
 
-1. **Construct-clean, never copy-then-delete.** The solver workspace is built by copying
-   the baseline clone with hidden paths *excluded from the copy*. There is nothing to
-   delete, so nothing can linger in an image layer. For the test-patch format, the
+1. **Construct-clean, never copy-then-delete.** A native bundle's image is built from a
+   copy of the baseline clone with hidden paths *excluded from the copy*. There is nothing
+   to delete, so nothing can linger in an image layer. For the test-patch format, the
    *baseline* versions of the files the patch touches stay visible — that is exactly the
    repo at the pinned commit, which is what a real solver would see — while the patch
    itself and the *patched* versions are hidden.
-2. **`.git` is scrubbed** from the solver workspace. The solver gets a plain directory
-   tree, never a repo whose history could contain future commits. The orchestrator keeps
-   its own host-side checkout for diffing. (Clones are also shallow — `git init` + `fetch
+2. **`.git` is scrubbed** from the solver's tree. The solver gets a plain directory tree,
+   never a repo whose history could contain future commits. Native images are built from
+   a `.git`-free copy; prebuilt images ship a full-history clone (openlibrary's carries
+   16k commits) and its `.git` — and every submodule's — is removed at build time. The
+   orchestrator's own clone stays on the host. (It is also shallow — `git init` + `fetch
    --depth 1 <sha>` — as defense in depth against history recovery.)
 3. **Hidden tests are never in any image.** They are staged via `docker cp` into a
-   *running* evaluation container only, after the solver's diff has been captured.
-4. **A content leak guard runs pre-flight.** Before the solver starts, the cleaned tree
-   is scanned and aborts if any file is byte-identical to a hidden blob. The comparison
-   is on *contents*, not names: a same-named test file with different bytes is legitimate
-   (p2p tests are often modified versions of existing files), while identical bytes under
-   any name is a leak.
+   *running* evaluation container only, after the solver's changeset has been captured.
+4. **A content leak guard runs pre-flight.** Before the solver starts, the solve
+   container's repo dir is hashed (the same manifest that later yields the changeset) and
+   the run aborts if any file's sha256 equals a hidden blob's. The comparison is on
+   *contents*, not names: a same-named test file with different bytes is legitimate (p2p
+   tests are often modified versions of existing files), while identical bytes under any
+   name is a leak. Because the guard reads the *running container*, it covers whatever a
+   prebuilt base image happened to ship, not just what the engine copied in.
 
-The tool's own test suite covers this invariant with fixture bundles (`test_workspace.py`),
-including the subtle case where a same-named file is fine but byte-identical content is not.
+The tool's own test suite covers this invariant at both levels: the pure guard
+(`test_workspace.py`, including the same-name-different-bytes case) and an end-to-end
+run that plants a byte-identical hidden test under an innocent name and must abort with
+exit 3 before any solver runs (`test_run_docker.py`).
 
 ---
 
@@ -94,28 +101,38 @@ including the subtle case where a same-named file is fine but byte-identical con
 A `task run` is two structurally separated phases sharing **one task image**:
 
 ```
-baseline  →  solve  →  (snapshot diff)  →  grade
+baseline  →  solve in place  →  (manifest diff = changeset)  →  grade
 ```
 
 - **Baseline** — a fresh container; hidden tests staged; suites run once to record each
   test's "before" status.
-- **Solve** — a cleaned workspace tree (hidden tests excluded, `.git` removed, leak-guard
-  verified) is handed to the solver, which mutates it. The orchestrator snapshots the tree
-  before and diffs after. Network is **off**.
-- **Grade** — a *fresh* evaluation container gets the solver's tree overlaid onto
-  `/workspace`, hidden tests staged via `docker cp`, and suites run once for the "after"
-  status. The solver never observes this container.
+- **Solve** — a fresh container *is* the solver's workspace: its repo dir is the image's
+  own tree (`.git`-free, leak-guard verified), and the solver mutates it in place.
+  Network is **off**. The orchestrator hashes every file before and after (`find` +
+  `sha256sum`, run as root so nothing can hide); the difference — modified, added,
+  deleted — filtered through the repo's own `.gitignore` (plus a tiny bytecode/cache
+  hygiene list) is the **changeset**. Only the changed files are copied out.
+- **Grade** — a *fresh* evaluation container gets the changeset replayed into its repo
+  dir (changed and added files copied in, deleted files removed), hidden tests staged via
+  `docker cp`, and suites run once for the "after" status. The solver never observes
+  this container. The unified diff in the report is rendered host-side from the grade
+  container's pristine versions of the changed paths versus the solver's.
 
-**One image, built from the cleaned tree, serves every phase.** Because the image build
-context is the cleaned tree and hidden tests are staged identically at validate and grade
-time, **validation exercises the exact grading path** — there is no separate, untested
-grading code.
+**One image serves every phase.** Because hidden tests are staged identically at validate
+and grade time, **validation exercises the exact grading path** — there is no separate,
+untested grading code.
 
-**Grade applies the solver's work by wipe-then-overlay, not by patching.** The eval
-container's `/workspace` is emptied and the solved tree copied in. This needs no `git` or
-`patch` inside the image (language-agnostic) and correctly handles files the solver
-*deleted*. Solvers therefore never need to produce a patch themselves — the orchestrator
-derives the diff uniformly for stub and LLM solvers alike.
+**Grade applies the changeset in place, never a clean clone.** This is the property that
+makes prebuilt images gradeable. Dependencies routinely live *under* the repo directory
+but outside git — submodule checkouts (openlibrary's `vendor/infogami`), `node_modules`,
+compiled extensions, module caches — and an earlier design that swapped a clean clone in
+for grading discarded all of them (the auto-`verify-gold` guard caught this and refused
+those instances). Replaying only what the solver changed onto the image's complete tree
+keeps everything else exactly as the image shipped it. It also needs no `git` or `patch`
+inside the image (plain file transport is language-agnostic) and handles deletions.
+Solvers never produce a patch themselves — the orchestrator derives the changeset
+uniformly for stub and LLM solvers alike (the stub applies its patch host-side to a
+sparse copy of the touched files and pushes them in through the same transport).
 
 **Baseline suites are re-run inside `task run`** rather than trusting a prior `validate`,
 so every report carries an honest before/after for that exact run.
@@ -143,11 +160,11 @@ the solver must get no exfiltration or cheat channel. This is the one deliberate
 tradeoff, documented here rather than hidden.
 
 The ClaudeSolver's tools (`list_dir`, `read_file`, `write_file`, `run_command`) all
-execute *inside* the hardened container via `docker exec` — solver-controlled code never
-touches the host. The workspace is synced out only after the loop, for diffing. Model file
-paths are confined by a `normpath`-under-`/workspace` check on top of the container
-boundary, and the loop is bounded by max-iterations, a wall-clock timeout, per-call token
-caps, and tool-output truncation.
+execute *inside* the hardened solve container via `docker exec` — solver-controlled code
+never touches the host, and only the changed files ever leave the container (as data, for
+grading and the diff). Model file paths are confined by a `normpath`-under-the-repo-dir
+check on top of the container boundary, and the loop is bounded by max-iterations, a
+wall-clock timeout, per-call token caps, and tool-output truncation.
 
 ---
 
@@ -194,8 +211,8 @@ src/task_bundle/
   cli.py        # typer app: parse, delegate, render — thin
   bundle.py     # TaskSpec/BundleState pydantic models; load/scaffold/state
   container.py  # docker CLI wrapper: build, run, exec, cp, image list, limits
-  harness.py    # bundle-aware orchestration: images, staging (both formats), suites
-  workspace.py  # pinned clones, cleaned-tree construction, diffing, leak guard
+  harness.py    # bundle-aware orchestration: images, manifests/changesets, staging, suites
+  workspace.py  # pinned clones, sparse patch materialization, changeset math, diff, leak guard
   grading.py    # pure verdict logic (consolidate, run_verdict, contract checks)
   solver/
     base.py     # Solver protocol, SolveContext / SolveResult
@@ -207,10 +224,14 @@ src/task_bundle/
   errors.py     # TaskError hierarchy with actionable messages + exit codes
 ```
 
-Two boundaries do the heavy lifting. **`grading.py` is pure** — the verdict is a function
+Three boundaries do the heavy lifting. **`grading.py` is pure** — the verdict is a function
 over test records, so the SWE-bench semantics are table-tested exhaustively without any
-I/O. **`run.py` is DB-free** — it returns a `RunOutcome` and the CLI persists it, so the
-full pipeline is testable without sqlite and there is a single write path.
+I/O. **`workspace.py`'s changeset pieces are pure too** — manifest parsing, changeset
+computation, `.gitignore` filtering, and diff rendering are functions over plain
+directories and dicts, so the solve → changeset → diff chain is unit-tested without a
+container (including a round-trip proof that the rendered diff `git apply`s back to the
+solver's tree). **`run.py` is DB-free** — it returns a `RunOutcome` and the CLI persists
+it, so the full pipeline is testable without sqlite and there is a single write path.
 
 The docker engine is driven through the **CLI via subprocess**, not the docker SDK: one
 fewer heavy dependency, and failures surface the exact command. Predictable failures raise
@@ -242,17 +263,24 @@ the whole point is to show the patch is what makes the task solvable.
 
 ## 10. Known limitations and future work
 
-- **SWE-bench import relies on an editable install.** Prebuilt instance images install
-  the repo *editable* at their configured `WorkingDir` (a finder maps `import pkg` to an
-  absolute path under it). The engine **discovers that path from the image** (never
-  hardcodes `/app`, never touches `/`) and symlinks it to the engine's clean
-  `/workspace`, so tests import the code the solver edits while the solver still works in
-  an artifact-free tree (keeping diff capture clean). The irreducible limit is a
-  *non-editable* install: it imports from site-packages regardless of path, so the
-  solver's edits would be invisible — unfixable without a network/language-specific
-  reinstall. **`import-swebench` runs `verify-gold` automatically** so this fails loudly
-  at import (a gold patch that can't flip f2p) instead of silently grading every solver
-  `UNRESOLVED`. Per-language reinstall support is future work.
+- **SWE-bench import relies on the image's install seeing the repo tree.** Prebuilt
+  instance images keep the repo at their configured `WorkingDir`; the engine **discovers
+  that path from the image** (never hardcodes `/app`, never touches `/`) and the solver
+  edits that tree in place, so editable installs, path dependencies, submodules and
+  `node_modules` all resolve exactly as they did when the image was built. The
+  irreducible limit is a *non-editable* install: it imports from site-packages regardless
+  of the tree, so the solver's edits would be invisible — unfixable without a
+  network/language-specific reinstall. **`import-swebench` runs `verify-gold`
+  automatically** so this fails loudly at import (a gold patch that can't flip f2p)
+  instead of silently grading every solver `UNRESOLVED`.
+- **Base-image content cannot be structurally excluded, only removed.** For prebuilt
+  images, `workspace_excludes` become `rm -rf` steps in the task image (the bytes remain
+  in the base layer, though not in the running container). The leak guard still checks
+  the running container, so an exclude that failed to remove hidden content aborts.
+- **Changesets track regular files.** Symlink creation/retargeting and mode-only changes
+  (e.g. `chmod +x`) by a solver are not captured; grading tests rarely depend on either.
+  A `.gitignore`d path the solver edits is dropped from the changeset by design (the
+  same semantics as `git add -A`).
 - **Per-test exec granularity.** One container-exec per test path is simple and language-
   agnostic but slower than a single batched invocation. Fine at task scale; a batched mode
   is possible if throughput ever matters.
@@ -268,6 +296,16 @@ the whole point is to show the patch is what makes the task solvable.
 
 `evaluation/ansible-combine-vars/` holds a full run on a real SWE-bench Pro instance
 (ansible/ansible, 1 fail2pass + 15 pass2pass): `validate` holds 3× consistent, the gold
-patch grades `RESOLVED`, a no-op grades `UNRESOLVED`, and `verify-gold` confirms
-solvability. The committed reports are the deterministic proof that the grading pipeline
-is correct end-to-end on data the engine had never seen during development.
+patch grades `RESOLVED`, a no-op grades `UNRESOLVED`, `verify-gold` confirms solvability,
+and a live Claude solve grades `RESOLVED` with a fix that differs from the gold patch.
+
+`evaluation/multi-instance/` is the cross-repo sweep, run before and after grading moved
+to solve-in-place. The instance that previously failed with `ModuleNotFoundError:
+infogami` (a submodule under the repo dir that clone-swap discarded) now verifies: its
+fail2pass test fails on baseline with the *actual* bug and passes after the gold patch. A
+second openlibrary instance (59 tests) grades gold → `RESOLVED` and no-op → `UNRESOLVED`.
+The Go instance gets past both of its original failure modes and executes real `go test`
+runs; what still blocks it on this arm64 host is the amd64 Go toolchain segfaulting under
+qemu, reproduced outside the harness. The committed reports and logs are the deterministic
+proof that the grading pipeline is correct end-to-end on data the engine had never seen
+during development.
