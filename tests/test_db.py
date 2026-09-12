@@ -52,6 +52,54 @@ class TestDatabase:
         a, b = new_id("cmd"), new_id("cmd")
         assert a < b or a.split("-")[0] <= b.split("-")[0]
 
+    def test_fleet_jobs_resume_and_completed_jobs_are_idempotent(self, tmp_path: Path) -> None:
+        db = Database(tmp_path / "t.db")
+        db.insert_command("cmd_1", "fleet", "[]", None, "t0", None)
+        db.start_fleet("fleet_x", "cmd_1", "cfg", "local", "t0")
+        db.add_fleet_job("job_1", "fleet_x", "run_1", "/b", "toy", "stub", None, "cfg", 1)
+        assert db.claim_fleet_job("job_1", "t1")
+
+        db.insert_command("cmd_active", "fleet", "[]", None, "t1", None)
+        assert not db.start_fleet("fleet_x", "cmd_active", "cfg", "local", "t1")
+
+        # Starting the same fleet after a crash recovers its in-flight job.
+        db.finish_command("cmd_1", 1, "t2")
+        db.insert_command("cmd_2", "fleet", "[]", None, "t2", None)
+        assert db.start_fleet("fleet_x", "cmd_2", "cfg", "local", "t2")
+        assert db.fleet_jobs("fleet_x")[0]["status"] == "pending"
+        assert db.claim_fleet_job("job_1", "t3")
+        db.finish_fleet_job("job_1", "RESOLVED", "t4")
+        assert not db.claim_fleet_job("job_1", "t5")
+        row = db.fleet_jobs("fleet_x")[0]
+        assert (row["status"], row["attempts"], row["verdict"]) == (
+            "completed",
+            2,
+            "RESOLVED",
+        )
+
+    def test_overlapping_fleets_rehome_the_shared_job(self, tmp_path: Path) -> None:
+        """Job ids are fleet-independent, so a wider sweep must adopt the shared row."""
+        db = Database(tmp_path / "t.db")
+        db.insert_command("cmd_1", "fleet", "[]", None, "t0", None)
+        db.start_fleet("fleet_a", "cmd_1", "cfg_a", "local", "t0")
+        db.add_fleet_job("job_1", "fleet_a", "run_1", "/b", "toy", "stub", None, "cfg", 1)
+        assert db.claim_fleet_job("job_1", "t1")
+        db.finish_fleet_job("job_1", "RESOLVED", "t2")
+        db.finish_fleet("fleet_a", "completed", "t2")
+        db.finish_command("cmd_1", 0, "t2")
+
+        # A second fleet covering {toy, other} shares job_1 but hashes to a new id.
+        db.insert_command("cmd_2", "fleet", "[]", None, "t3", None)
+        db.start_fleet("fleet_ab", "cmd_2", "cfg_ab", "local", "t3")
+        db.add_fleet_job("job_1", "fleet_ab", "run_1", "/b", "toy", "stub", None, "cfg", 1)
+        db.add_fleet_job("job_2", "fleet_ab", "run_2", "/c", "other", "stub", None, "cfg2", 1)
+
+        rows = {row["id"]: row for row in db.fleet_jobs("fleet_ab")}
+        assert set(rows) == {"job_1", "job_2"}  # neither job is stranded on fleet_a
+        assert rows["job_1"]["status"] == "completed"  # completed work is still resumed
+        assert rows["job_1"]["verdict"] == "RESOLVED"
+        assert rows["job_2"]["status"] == "pending"
+
 
 class TestCommandRecording:
     def test_successful_init_recorded(

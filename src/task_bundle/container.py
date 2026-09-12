@@ -11,6 +11,8 @@ limits, all capabilities dropped, no-new-privileges. Hidden tests are staged wit
 """
 
 import io
+import json
+import secrets
 import subprocess
 import tarfile
 import time
@@ -69,6 +71,8 @@ ARGV_BATCH = 500
 
 class Docker:
     """Stateless wrapper over the docker CLI."""
+
+    runtime_name = "docker"
 
     def ensure_available(self) -> None:
         """Raise DockerError unless the daemon is reachable."""
@@ -130,6 +134,19 @@ class Docker:
 
     def rmi(self, tag: str) -> None:
         _docker(["rmi", "-f", tag], timeout=120)
+
+    def tag(self, source: str, target: str) -> None:
+        proc = _docker(["tag", source, target], timeout=120)
+        if proc.returncode != 0:
+            raise DockerError(f"Could not tag {source} as {target}: {proc.stderr.strip()}")
+
+    def push(self, tag: str, *, timeout: int = 1800) -> None:
+        try:
+            proc = _docker(["push", tag], timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            raise DockerError(f"Pushing {tag} timed out after {timeout}s.") from e
+        if proc.returncode != 0:
+            raise DockerError(f"Could not push {tag}: {proc.stderr.strip()}")
 
     def list_images(self, repo_prefix: str) -> list[str]:
         """Return ``repository:tag`` for every image whose ref starts with ``repo_prefix``."""
@@ -312,3 +329,189 @@ class Docker:
 
     def rm_force(self, container_id: str) -> None:
         _docker(["rm", "-f", container_id], timeout=120)
+
+
+def _kubectl(
+    args: list[str], *, timeout: int | None = None, stdin: str | None = None
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            ["kubectl", *args],
+            input=stdin,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except FileNotFoundError as e:
+        raise DockerError("kubectl not found on PATH. Install kubectl and retry.") from e
+
+
+class Kubernetes(Docker):
+    """Docker-compatible container runtime backed by short-lived Kubernetes pods.
+
+    Images must already be available from the cluster's registry. The fleet CLI
+    handles the local build/tag/push step before dispatching jobs here.
+    """
+
+    runtime_name = "kubernetes"
+
+    def __init__(
+        self,
+        *,
+        namespace: str = "default",
+        network_policy: str = "task-bundle-deny-egress",
+        image_pull_policy: str = "IfNotPresent",
+    ) -> None:
+        self.namespace = namespace
+        self.network_policy = network_policy
+        self.image_pull_policy = image_pull_policy
+
+    def ensure_available(self) -> None:
+        proc = _kubectl(["cluster-info"], timeout=30)
+        if proc.returncode != 0:
+            raise DockerError(f"Kubernetes cluster unreachable: {proc.stderr.strip()}")
+        policy = _kubectl(
+            ["get", "networkpolicy", self.network_policy, "-n", self.namespace], timeout=30
+        )
+        if policy.returncode != 0:
+            raise DockerError(
+                f"Kubernetes backend requires NetworkPolicy {self.network_policy!r} in "
+                f"namespace {self.namespace!r} to preserve solver network isolation."
+            )
+
+    def version(self) -> str:
+        proc = _kubectl(["version", "--client", "-o", "json"], timeout=30)
+        if proc.returncode != 0:
+            return "unknown"
+        try:
+            data = json.loads(proc.stdout)
+            return str(data["clientVersion"]["gitVersion"])
+        except (KeyError, json.JSONDecodeError):
+            return "unknown"
+
+    def image_exists(self, tag: str) -> bool:
+        # Registry reachability is established when Kubernetes starts the pod.
+        return True
+
+    def image_id(self, tag: str) -> str | None:
+        return None
+
+    def pull(self, image: str, *, timeout: int = 1800) -> None:
+        raise DockerError("Kubernetes images must be pushed to a registry before execution.")
+
+    def build(self, context: Path, tag: str, *, network: bool = True, timeout: int = 1800) -> str:
+        raise DockerError("Build task images with Docker, then push them for Kubernetes.")
+
+    def run_detached(
+        self, image: str, *, network_off: bool = True, workdir: str | None = None
+    ) -> str:
+        name = f"task-bundle-{secrets.token_hex(6)}"
+        manifest = {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "name": name,
+                "namespace": self.namespace,
+                "labels": {"app.kubernetes.io/name": "task-bundle", "task-bundle/network": "off"},
+            },
+            "spec": {
+                "restartPolicy": "Never",
+                "securityContext": {
+                    "runAsUser": 1000,
+                    "runAsGroup": 1000,
+                    "fsGroup": 1000,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+                "containers": [
+                    {
+                        "name": "worker",
+                        "image": image,
+                        "imagePullPolicy": self.image_pull_policy,
+                        "command": ["sleep", "infinity"],
+                        "workingDir": workdir or WORKDIR,
+                        "securityContext": {
+                            "allowPrivilegeEscalation": False,
+                            "capabilities": {"drop": ["ALL"]},
+                        },
+                        "resources": {
+                            "limits": {"cpu": CPU_LIMIT, "memory": "4Gi"},
+                            "requests": {"cpu": "100m", "memory": "256Mi"},
+                        },
+                    }
+                ],
+            },
+        }
+        proc = _kubectl(
+            ["apply", "-f", "-"], timeout=60, stdin=json.dumps(manifest, separators=(",", ":"))
+        )
+        if proc.returncode != 0:
+            raise DockerError(f"Could not create Kubernetes pod {name}: {proc.stderr.strip()}")
+        ready = _kubectl(
+            [
+                "wait",
+                "--for=condition=Ready",
+                f"pod/{name}",
+                "-n",
+                self.namespace,
+                "--timeout=120s",
+            ],
+            timeout=130,
+        )
+        if ready.returncode != 0:
+            self.rm_force(name)
+            raise DockerError(f"Kubernetes pod {name} did not become ready: {ready.stderr.strip()}")
+        return name
+
+    def exec(
+        self,
+        container_id: str,
+        command: str,
+        *,
+        timeout: int,
+        user: str | None = None,
+        workdir: str | None = None,
+    ) -> ExecResult:
+        del user  # Kubernetes exec uses the pod's hardened uid (1000) for every command.
+        start = time.monotonic()
+        try:
+            proc = _kubectl(
+                [
+                    "exec",
+                    "-n",
+                    self.namespace,
+                    container_id,
+                    "--",
+                    "sh",
+                    "-c",
+                    f"cd {workdir or WORKDIR} && {command}",
+                ],
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return ExecResult(-1, f"(timed out after {timeout}s)", time.monotonic() - start, True)
+        return ExecResult(proc.returncode, proc.stdout + proc.stderr, time.monotonic() - start)
+
+    def cp_in(self, container_id: str, src: Path | str, dest: str) -> None:
+        proc = _kubectl(["cp", str(src), f"{self.namespace}/{container_id}:{dest}"], timeout=300)
+        if proc.returncode != 0:
+            raise DockerError(f"kubectl cp {src} -> {dest} failed: {proc.stderr.strip()}")
+
+    def cp_out(self, container_id: str, src: str, dest: Path) -> None:
+        proc = _kubectl(["cp", f"{self.namespace}/{container_id}:{src}", str(dest)], timeout=300)
+        if proc.returncode != 0:
+            raise DockerError(f"kubectl cp {src} -> {dest} failed: {proc.stderr.strip()}")
+
+    def rm_force(self, container_id: str) -> None:
+        _kubectl(
+            [
+                "delete",
+                "pod",
+                container_id,
+                "-n",
+                self.namespace,
+                "--ignore-not-found=true",
+                "--wait=false",
+            ],
+            timeout=60,
+        )

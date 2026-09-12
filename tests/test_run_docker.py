@@ -190,3 +190,35 @@ def test_hidden_test_in_solver_tree_is_refused(
         assert Database(isolated_db).list_runs()[0]["verdict"] == "ERROR"
     finally:
         Docker().rmi(image_tag(bundle))
+
+
+def test_fleet_runs_concurrently_then_resumes_without_duplicate_runs(
+    tmp_path: Path, shared_origin: tuple[str, str], isolated_db: Path
+) -> None:
+    bundle = make_initialized_bundle(tmp_path / "fleet", shared_origin, f2p=F2P_TEST, p2p=P2P_TEST)
+    args = [
+        "fleet",
+        str(bundle.path),
+        "--patch",
+        str(GOLD_PATCH),
+        "--samples",
+        "2",
+        "--concurrency",
+        "2",
+        "--container-limit",
+        "2",
+        "--min-free-disk-gb",
+        "0",
+    ]
+
+    first = runner.invoke(app, args)
+    assert first.exit_code == 0, first.output
+    assert "2 jobs (0 resumed, 2 to run)" in " ".join(first.output.split())
+    runs = Database(isolated_db).list_runs()
+    assert len(runs) == 2
+    assert {row["verdict"] for row in runs} == {"RESOLVED"}
+
+    second = runner.invoke(app, args)
+    assert second.exit_code == 0, second.output
+    assert "2 jobs (2 resumed, 0 to run)" in " ".join(second.output.split())
+    assert len(Database(isolated_db).list_runs()) == 2

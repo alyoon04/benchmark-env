@@ -27,12 +27,14 @@ This document is the working design. It is the source of truth for decisions;
    with no path to the host filesystem.
 6. Observability: every CLI invocation logged to SQLite; artifacts (diffs, test output,
    transcripts, build logs) stored on disk and referenced by path.
+7. Fleet execution: bounded concurrency, disk-pressure admission control, durable resume,
+   multi-sample pass@k, and interchangeable local/Kubernetes runtimes.
 
 **Non-goals (documented as future work in DESIGN_NOTES.md)**
 
-- Parallel/fleet execution across many tasks.
-- Remote execution backends (k8s, Modal, etc.).
-- Multi-attempt solver orchestration / pass@k.
+- A hosted scheduler/control plane.
+- Automatic cluster provisioning or registry credential management.
+- Cross-run warm-container reuse.
 
 ---
 
@@ -249,11 +251,31 @@ CREATE TABLE artifacts (
   type       TEXT NOT NULL,   -- solver_diff | test_output | build_log | solver_transcript | report
   path       TEXT NOT NULL
 );
+
+CREATE TABLE fleets (
+  id TEXT PRIMARY KEY,                -- fleet_<config hash>
+  command_id TEXT NOT NULL REFERENCES commands(id),
+  config_hash TEXT NOT NULL,
+  backend TEXT NOT NULL,              -- local | kubernetes
+  started_at TEXT NOT NULL, finished_at TEXT,
+  status TEXT NOT NULL                -- running | completed | partial
+);
+
+CREATE TABLE fleet_jobs (
+  id TEXT PRIMARY KEY,                -- stable task/config/sample key
+  fleet_id TEXT NOT NULL REFERENCES fleets(id),
+  run_id TEXT NOT NULL,
+  bundle_path TEXT NOT NULL, task_id TEXT NOT NULL,
+  solver TEXT NOT NULL, model TEXT, config_hash TEXT NOT NULL,
+  sample INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL, verdict TEXT, error TEXT,
+  started_at TEXT, finished_at TEXT
+);
 ```
 
-Artifacts live under `artifacts/<command-id>/` (runs reference their command's dir);
-DB stores paths, never blobs. Every CLI invocation opens with a `commands` insert and
-closes with exit status + duration (via a context manager so even crashes record).
+Artifacts live under `artifacts/<command-id>/` (fleet runs use one nested directory per
+run); DB stores paths, never blobs. Every CLI invocation opens with a `commands` insert
+and closes with exit status + duration (via a context manager so even crashes record).
 
 ---
 
@@ -263,7 +285,9 @@ closes with exit status + duration (via a context manager so even crashes record
 src/task_bundle/
   cli.py          # typer app; thin — parses, delegates, renders rich output
   bundle.py       # TaskSpec pydantic models, bundle load/scaffold/state
-  container.py    # docker engine wrapper: build, run, exec, cp, limits
+  container.py    # Docker + Kubernetes runtimes: run, exec, cp, isolation/limits
+  execution.py    # execute + persist/report one solver run
+  fleet.py        # worker pool, disk guard, stable ids, pass@k
   harness.py      # bundle-aware orchestration: task images, staging, suite runs
   workspace.py    # pinned clones, cleaned-tree construction, hiding-invariant guard
   grading.py      # verdict logic (pure functions; table-tested)

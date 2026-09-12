@@ -7,7 +7,7 @@ isolation — with every command logged to a queryable SQLite database.
 > **Status: feature-complete**, built in reviewable milestones. See
 > [DESIGN_NOTES.md](DESIGN_NOTES.md) for the design rationale, [PROGRESS.md](PROGRESS.md)
 > for the decision log, and [DESIGN.md](DESIGN.md) for the working design. The full
-> command surface — `init`, `validate`, `run` (stub + claude solvers), `verify-gold`,
+> command surface — `init`, `validate`, `run` / `fleet` (stub + claude solvers), `verify-gold`,
 > `import-swebench`, `diff`, `logs` / `runs`, `doctor`, and `clean` — is implemented,
 > tested, and documented.
 >
@@ -141,6 +141,40 @@ extensions — are present at grade time exactly as the image shipped them. No `
   `--max-iterations` (default 30), 30-minute wall clock, bounded tool output. Tokens
   and estimated cost land in the run stats.
 
+## Fleet execution
+
+`task fleet` scales the same correctness pipeline across tasks and independent
+samples. A bounded worker pool enforces both `--concurrency` and a per-host
+`--container-limit`; new work pauses when free space on the artifact volume falls
+below `--min-free-disk-gb`. Every task/model/config/sample tuple has a stable job
+and run id in SQLite. Repeating a command therefore reuses completed results and
+retries only interrupted or errored jobs.
+
+```sh
+# Four samples for every bundle, with at most eight live containers.
+uv run task fleet bundles/* --solver claude \
+  --samples 4 --concurrency 16 --container-limit 8
+```
+
+The command prints per-job progress, pass@1 through pass@k, and writes a structured
+`fleet_summary.json`. The pass@k values use the standard unbiased estimator across
+tasks, not just the raw fraction of successful attempts.
+
+Execution can also be moved to Kubernetes while orchestration, SQLite state, and
+artifacts remain local. Build credentials for the target registry must already be
+configured in Docker, and the cluster must have a default-deny egress policy for
+solver pods:
+
+```sh
+kubectl apply -n eval -f examples/kubernetes-deny-egress.yaml
+uv run task fleet bundles/* --solver claude --samples 4 \
+  --backend kubernetes --registry ghcr.io/acme --kube-namespace eval
+```
+
+The Kubernetes backend preserves the same ephemeral-pod, non-root, resource-limit,
+hidden-test staging, and network-isolation boundaries as local execution. Images
+must include `tar`, which `kubectl cp` requires.
+
 ## Isolation model
 
 Task containers run with: no network (`--network none`; build-time network is on so
@@ -158,6 +192,7 @@ gets a fresh container so runs cannot contaminate each other.
 | `task logs [<command-id>]` | ✅ | No argument: list recent commands. With an id: show argv, exit code, per-test results, artifacts, and the command log. |
 | `task runs list` / `task runs show <run-id>` | ✅ | Query solver runs (populated by `task run`). |
 | `task run <bundle> [--solver stub\|claude] [--patch FILE \| --gold] [--model M] [--max-iterations N] [--rebuild]` | ✅ | Baseline → solve in place → replay changeset → grade, in separate containers; before/after table, changed/added/deleted counts, RESOLVED/UNRESOLVED verdict, sorted-key `report.json` + `solver.diff`/transcript artifacts, run + token/cost stats recorded in DB. `claude` solver needs `ANTHROPIC_API_KEY`. |
+| `task fleet <bundle>... [--samples K] [--concurrency N] [--container-limit N] [--backend local\|kubernetes]` | ✅ | Concurrent, disk-aware, resumable multi-task/multi-sample execution with content-derived run ids, pass@k, and a JSON fleet summary. |
 | `task import-swebench <instance-id> [--dest DIR] [--test-command TPL] [--timeout N] [--no-init] [--no-verify]` | ✅ | Convert a public SWE-bench Pro instance (ScaleAI/SWE-bench_Pro on HuggingFace) into a ready-to-validate bundle: prebuilt instance image as base, hidden tests as test patch + explicit f2p/p2p ids, gold patch saved as `patch.diff`. The repo path is discovered from the image (no `/app` hardcode) and used in place, so submodules/`node_modules`/caches under it survive; Go instances get scoped packages, anchored `-run` patterns, and a writable `GOCACHE`. After `--init` it auto-runs `verify-gold` so a non-gradeable instance fails loudly at import. See `evaluation/` for real end-to-end runs. |
 | `task verify-gold <bundle> [--rebuild]` | ✅ | Prove solvability: apply `patch.diff` via a deterministic stub solver and confirm every fail2pass test flips to pass and every pass2pass holds. Exit 2 (naming each offending test) if the golden patch doesn't cleanly resolve the task. Records no run — it's an authoring check. |
 | `task diff <run-id>` | ✅ | Print the unified diff a run's solver produced (raw, pipeable to `git apply`). |
@@ -178,6 +213,7 @@ uv run task runs list             # past solver runs and verdicts
 ```
 
 Tables: `commands` (one row per invocation), `runs` (solver runs + verdict/cost),
+`fleets` / `fleet_jobs` (durable scheduler state and retry attempts),
 `test_results` (per test, per attempt, per phase), `artifacts` (paths to on-disk
 build logs, test output, diffs, transcripts under `~/.task-bundle/artifacts/<command-id>/`).
 

@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from conftest import F2P_TEST, P2P_TEST, make_initialized_bundle
+from conftest import F2P_TEST, P2P_TEST, make_initialized_bundle, seed_fleet_command
 from typer.testing import CliRunner
 
 from task_bundle.cli import app
@@ -20,6 +20,17 @@ def test_unknown_run_errors(isolated_db: Path) -> None:
     assert result.exit_code != 0
     assert isinstance(result.exception, TaskError)
     assert "No run" in str(result.exception)
+
+
+def test_diff_does_not_fall_back_to_a_sibling_fleet_runs_patch(
+    tmp_path: Path, isolated_db: Path
+) -> None:
+    seed_fleet_command(isolated_db, tmp_path / "artifacts")
+
+    result = runner.invoke(app, ["diff", "run_err"])
+
+    assert isinstance(result.exception, TaskError)
+    assert "no stored diff" in str(result.exception)
 
 
 @pytest.mark.docker

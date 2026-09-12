@@ -25,7 +25,8 @@ def tool_versions(docker: Docker) -> dict[str, str]:
     except FileNotFoundError:
         git_version = "unknown"
     return {
-        "docker": docker.version(),
+        "container_runtime": docker.runtime_name,
+        docker.runtime_name: docker.version(),
         "git": git_version,
         "python": platform.python_version(),
         "task_bundle": __version__,
