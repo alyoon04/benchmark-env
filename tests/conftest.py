@@ -14,6 +14,7 @@ from typer.testing import CliRunner
 
 from task_bundle.bundle import Bundle
 from task_bundle.cli import app
+from task_bundle.db import Database
 
 _runner = CliRunner()
 
@@ -147,3 +148,23 @@ def make_initialized_bundle(path: Path, origin: tuple[str, str], *, f2p: str, p2
     result = _runner.invoke(app, ["init", str(path)])
     assert result.exit_code == 0, result.output
     return bundle
+
+
+def seed_fleet_command(db_path: Path, artifacts_dir: Path) -> Path:
+    """One ``fleet`` command with two nested runs; only ``run_ok`` recorded artifacts.
+
+    Mirrors what `task fleet` writes when one job errors before the solve phase:
+    a runs row with no artifacts, beside a sibling run that produced a diff.
+    """
+    command_dir = artifacts_dir / "cmd_fleet"
+    db = Database(db_path)
+    db.insert_command("cmd_fleet", "fleet", "[]", None, "2026-01-01T00:00:00+00:00", None)
+    for run_id in ("run_ok", "run_err"):
+        db.insert_run(run_id, "cmd_fleet", "b", "stub", None, "2026-01-01T00:00:00+00:00",
+                      "task-bundle/b:k", "sha256:x", "{}")  # fmt: skip
+        (command_dir / run_id).mkdir(parents=True)
+    ok_diff = command_dir / "run_ok" / "solver.diff"
+    ok_diff.write_text("+    return a / b\n")
+    db.add_artifact("cmd_fleet", "solver_diff", str(ok_diff), run_id="run_ok")
+    db.close()
+    return command_dir

@@ -76,15 +76,17 @@
 
 All eight milestones complete. The full surface — `init`, `validate`, `run`
 (stub + claude), `verify-gold`, `import-swebench`, `diff`, `logs`, `runs`,
-`doctor`, `clean` — is implemented, tested, and documented. `DESIGN_NOTES.md` is
+`fleet`, `doctor`, `clean` — is implemented, tested, and documented. Fleet execution
+adds bounded concurrency, SQLite resume, multi-sample pass@k, disk-pressure backoff,
+and local/Kubernetes runtimes. `DESIGN_NOTES.md` is
 the distilled final design deliverable; `.github/workflows/ci.yml` runs ruff +
 mypy + the non-docker suite on a 3.11/3.12 matrix.
 
 Post-milestone: grading moved to **solve-in-place + changeset replay** (see the
 decision table), closing the scope gap the multi-instance sweep exposed — repos
 whose deps live under the repo dir outside git now grade correctly (see
-`evaluation/multi-instance/`). 146 tests (17 docker-marked), ruff + mypy --strict
-clean.
+`evaluation/multi-instance/`). Fleet adds resumable concurrent execution on top
+of that grading path. Ruff + mypy --strict are clean.
 
 ## Possible follow-ups (out of original scope)
 
@@ -94,5 +96,5 @@ clean.
   step (in-place grading now handles editable installs, submodules, `node_modules` and
   compiled extensions; a non-editable install is still detected loudly by the auto
   verify-gold guard).
-- Batched test execution (one exec for many test paths) if throughput matters.
+- Batched test execution and safe warm-container reuse after apply-diff-in-place grading.
 - Digest-pin example base images for fully reproducible builds.

@@ -11,6 +11,8 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -23,9 +25,20 @@ from rich.table import Table
 
 from task_bundle import __version__
 from task_bundle.bundle import Bundle, utc_now_iso
-from task_bundle.container import Docker
+from task_bundle.container import Docker, Kubernetes
 from task_bundle.db import Database, new_id
 from task_bundle.errors import BundleError, ContractViolation, DockerError, TaskError
+from task_bundle.execution import execute_recorded_run
+from task_bundle.fleet import (
+    DiskGuard,
+    FleetJob,
+    FleetResult,
+    FleetScheduler,
+    LocalBackend,
+    fleet_identity,
+    pass_at_k,
+    stable_job,
+)
 from task_bundle.grading import (
     FLAKY,
     TestExecution,
@@ -33,8 +46,7 @@ from task_bundle.grading import (
     check_gold_contract,
     consolidate,
 )
-from task_bundle.harness import IMAGE_REPO, ensure_image, run_baseline_suites, smoke_test
-from task_bundle.report import build_report, tool_versions, write_report
+from task_bundle.harness import IMAGE_REPO, TaskImage, ensure_image, run_baseline_suites, smoke_test
 from task_bundle.run import execute_run
 from task_bundle.solver import ClaudeSolver, Solver, StubSolver
 from task_bundle.swebench import convert_instance, fetch_instance
@@ -394,59 +406,24 @@ def run(
             rec.save_artifact("build_log", "image_build.log", build_log)
 
         run_id = new_id("run")
-        versions = tool_versions(docker)
-        digest = docker.image_id(image.tag)
-        rec.db.insert_run(
-            run_id,
-            rec.command_id,
-            str(bundle.spec.id),
-            solver_obj.name,
-            solver_obj.model,
-            utc_now_iso(),
-            image.tag,
-            digest,
-            json.dumps(versions, sort_keys=True),
-        )
         rec.log(f"run {run_id} started (solver={solver_obj.name})")
         try:
             with console.status("Running baseline -> solve -> grade phases..."):
-                outcome = execute_run(docker, bundle, image, solver_obj)
+                recorded = execute_recorded_run(
+                    db=rec.db,
+                    command_id=rec.command_id,
+                    run_id=run_id,
+                    artifact_dir=rec.artifact_dir,
+                    docker=docker,
+                    bundle=bundle,
+                    image=image,
+                    solver=solver_obj,
+                )
         except BaseException:
-            rec.db.finish_run(run_id, "ERROR", utc_now_iso())
             rec.log(f"run {run_id} errored")
             raise
-        rec.db.record_test_results(rec.command_id, "baseline", outcome.baseline, run_id=run_id)
-        rec.db.record_test_results(
-            rec.command_id, "post_solver", outcome.post_solver, run_id=run_id
-        )
-        rec.db.finish_run(
-            run_id,
-            outcome.verdict,
-            utc_now_iso(),
-            outcome.solve.input_tokens,
-            outcome.solve.output_tokens,
-            outcome.solve.cost_usd,
-        )
-        rec.save_artifact("solver_diff", "solver.diff", outcome.diff)
-        rec.save_artifact("solver_transcript", "transcript.txt", outcome.solve.transcript)
-        rec.save_artifact(
-            "test_output",
-            "run_tests.txt",
-            "\n".join(
-                f"=== {e.test} [{e.bucket}] {phase}: {e.status} ===\n{e.output}"
-                for phase, execs in (
-                    ("baseline", outcome.baseline),
-                    ("post_solver", outcome.post_solver),
-                )
-                for e in execs
-            ),
-        )
-        report = build_report(
-            run_id, rec.command_id, bundle, solver_obj, outcome, image.tag, digest, versions
-        )
-        report_path = rec.artifact_dir / "report.json"
-        write_report(report_path, report)
-        rec.db.add_artifact(rec.command_id, "report", str(report_path), run_id=run_id)
+        outcome = recorded.outcome
+        report_path = recorded.report_path
 
         baseline_status = {e.test: e.status for e in outcome.baseline}
         table = Table(title=f"Run {run_id}: {bundle.spec.id} ({solver_obj.name})")
@@ -474,6 +451,308 @@ def run(
         rec.log(f"run {run_id} verdict: {outcome.verdict}")
         console.print(f"report: {report_path}")
         console.print(f"[dim]run id: {run_id} (task runs show {run_id})[/dim]")
+
+
+@app.command()
+def fleet(
+    bundle_paths: Annotated[
+        list[Path], typer.Argument(help="One or more initialized task bundle directories.")
+    ],
+    solver: Annotated[
+        str, typer.Option(help='Solver to use: "stub" (deterministic) or "claude" (LLM).')
+    ] = "stub",
+    model: Annotated[str | None, typer.Option(help="Model for the claude solver.")] = None,
+    max_iterations: Annotated[int, typer.Option(help="Iteration cap per solver sample.")] = 30,
+    samples: Annotated[
+        int, typer.Option("--samples", "-k", help="Independent samples per task.", min=1)
+    ] = 1,
+    concurrency: Annotated[int, typer.Option(help="Maximum concurrent worker threads.", min=1)] = 4,
+    container_limit: Annotated[
+        int, typer.Option(help="Maximum live task containers on this host/cluster.", min=1)
+    ] = 4,
+    min_free_disk_gb: Annotated[
+        float,
+        typer.Option(help="Pause new jobs while artifact-volume free space is below this."),
+    ] = 10.0,
+    disk_backoff_seconds: Annotated[
+        float, typer.Option(help="Seconds between disk-pressure admission checks.", min=0.1)
+    ] = 15.0,
+    patch: Annotated[
+        Path | None, typer.Option(help="Patch applied by the stub solver to every bundle.")
+    ] = None,
+    gold: Annotated[
+        bool, typer.Option(help="Run each bundle's golden patch with the stub solver.")
+    ] = False,
+    backend: Annotated[
+        str, typer.Option(help='Execution backend: "local" or "kubernetes".')
+    ] = "local",
+    registry: Annotated[
+        str | None,
+        typer.Option(help="Registry prefix for Kubernetes images, e.g. ghcr.io/acme."),
+    ] = None,
+    kube_namespace: Annotated[
+        str, typer.Option(help="Kubernetes namespace used for worker pods.")
+    ] = "default",
+    kube_network_policy: Annotated[
+        str, typer.Option(help="Existing deny-egress NetworkPolicy required by Kubernetes.")
+    ] = "task-bundle-deny-egress",
+    rebuild: Annotated[
+        bool, typer.Option(help="Force local image rebuilds before dispatch.")
+    ] = False,
+) -> None:
+    """Run many task/sample pairs concurrently with durable resume and pass@k.
+
+    Repeating the exact command resumes the same content-addressed fleet: completed
+    jobs are reused, interrupted jobs are recovered, and only errored/pending jobs run.
+    """
+    if backend not in {"local", "kubernetes"}:
+        raise TaskError(f"Unknown backend {backend!r}. Available: local, kubernetes.")
+    if backend == "kubernetes" and not registry:
+        raise TaskError("--backend kubernetes requires --registry so task images can be pushed.")
+    if patch and gold:
+        raise TaskError("Pass either --patch or --gold, not both.")
+    if not bundle_paths:
+        raise TaskError("Pass at least one bundle path.")
+
+    with record_command("fleet") as rec:
+        bundles = [Bundle.load(path) for path in bundle_paths]
+        for bundle in bundles:
+            bundle.test_format()
+        resolved_paths = [bundle.path for bundle in bundles]
+        if len(set(resolved_paths)) != len(resolved_paths):
+            raise TaskError("Each bundle path may appear only once in a fleet.")
+        task_ids = [bundle.spec.id for bundle in bundles]
+        if len(set(task_ids)) != len(task_ids):
+            raise TaskError("Fleet task ids must be unique; rename duplicate bundle ids.")
+
+        local_docker = Docker()
+        local_docker.ensure_available()
+        kubernetes_runtime: Kubernetes | None = None
+        if backend == "kubernetes":
+            kubernetes_runtime = Kubernetes(
+                namespace=kube_namespace, network_policy=kube_network_policy
+            )
+            kubernetes_runtime.ensure_available()
+        local_images: dict[Path, TaskImage] = {}
+        image_tags: dict[Path, str] = {}
+        image_repo_dirs: dict[Path, str] = {}
+        for bundle in bundles:
+            with console.status(f"Preparing image for {bundle.spec.id}..."):
+                local_image, build_log = ensure_image(local_docker, bundle, rebuild=rebuild)
+            if build_log:
+                rec.save_artifact("build_log", f"image_build_{bundle.spec.id}.log", build_log)
+            local_images[bundle.path] = local_image
+            image_repo_dirs[bundle.path] = local_image.repo_dir
+            runtime_tag = local_image.tag
+            if backend == "kubernetes":
+                assert registry is not None
+                runtime_tag = f"{registry.rstrip('/')}/{local_image.tag}"
+            image_tags[bundle.path] = runtime_tag
+
+        jobs: list[FleetJob] = []
+        for bundle in bundles:
+            job_patch = bundle.gold_patch_path if gold else patch
+            # Validate solver options and resolve the provider's effective model now,
+            # so a changed environment default creates a new idempotency key.
+            probe = _make_solver(solver, bundle, job_patch, False, model, max_iterations)
+            for sample in range(1, samples + 1):
+                jobs.append(
+                    stable_job(
+                        bundle_path=bundle.path,
+                        task_id=str(bundle.spec.id),
+                        repo_commit=bundle.spec.repo.commit,
+                        solver=solver,
+                        model=probe.model,
+                        max_iterations=max_iterations,
+                        sample=sample,
+                        image_tag=image_tags[bundle.path],
+                        patch=job_patch,
+                    )
+                )
+
+        fleet_id, config_hash = fleet_identity(jobs)
+        if not rec.db.start_fleet(fleet_id, rec.command_id, config_hash, backend, utc_now_iso()):
+            raise TaskError(
+                f"Fleet {fleet_id} is already running in another command. "
+                "Wait for it to finish before resuming."
+            )
+        for job in jobs:
+            rec.db.add_fleet_job(
+                job.id,
+                fleet_id,
+                job.run_id,
+                str(job.bundle_path),
+                job.task_id,
+                job.solver,
+                job.model,
+                job.config_hash,
+                job.sample,
+            )
+        rows = {row["id"]: row for row in rec.db.fleet_jobs(fleet_id)}
+        resumed = [
+            FleetResult(
+                job.id,
+                job.run_id,
+                job.task_id,
+                job.sample,
+                str(rows[job.id]["verdict"]),
+                resumed=True,
+            )
+            for job in jobs
+            if rows[job.id]["status"] == "completed"
+        ]
+        pending = [job for job in jobs if rows[job.id]["status"] != "completed"]
+        if backend == "kubernetes":
+            pending_paths = {job.bundle_path for job in pending}
+            for bundle in bundles:
+                if bundle.path not in pending_paths:
+                    continue
+                runtime_tag = image_tags[bundle.path]
+                with console.status(f"Pushing {runtime_tag}..."):
+                    local_docker.tag(local_images[bundle.path].tag, runtime_tag)
+                    local_docker.push(runtime_tag)
+        console.print(
+            f"Fleet [bold]{fleet_id}[/bold]: {len(jobs)} jobs "
+            f"({len(resumed)} resumed, {len(pending)} to run), "
+            f"{min(concurrency, container_limit)} workers via {backend}."
+        )
+
+        def execute_job(job: FleetJob) -> FleetResult:
+            job_db = Database(settings.db_path)
+            try:
+                if not job_db.claim_fleet_job(job.id, utc_now_iso()):
+                    row = next(r for r in job_db.fleet_jobs(fleet_id) if r["id"] == job.id)
+                    return FleetResult(
+                        job.id,
+                        job.run_id,
+                        job.task_id,
+                        job.sample,
+                        str(row["verdict"] or "ERROR"),
+                        resumed=True,
+                    )
+                bundle = Bundle.load(job.bundle_path)
+                solver_obj = _make_solver(
+                    job.solver,
+                    bundle,
+                    job.patch,
+                    False,
+                    job.model,
+                    job.max_iterations,
+                )
+                runtime: Docker
+                if backend == "kubernetes":
+                    assert kubernetes_runtime is not None
+                    runtime = kubernetes_runtime
+                else:
+                    runtime = Docker()
+                image = TaskImage(job.image_tag, image_repo_dirs[job.bundle_path])
+                recorded = execute_recorded_run(
+                    db=job_db,
+                    command_id=rec.command_id,
+                    run_id=job.run_id,
+                    artifact_dir=rec.artifact_dir / job.run_id,
+                    docker=runtime,
+                    bundle=bundle,
+                    image=image,
+                    solver=solver_obj,
+                    restart=True,
+                )
+                job_db.finish_fleet_job(job.id, recorded.outcome.verdict, utc_now_iso())
+                return FleetResult(
+                    job.id,
+                    job.run_id,
+                    job.task_id,
+                    job.sample,
+                    recorded.outcome.verdict,
+                )
+            except Exception as exc:
+                job_db.fail_fleet_job(job.id, f"{type(exc).__name__}: {exc}", utc_now_iso())
+                raise
+            finally:
+                job_db.close()
+
+        settings.artifacts_dir.mkdir(parents=True, exist_ok=True)
+        pressure_lock = threading.Lock()
+        last_pressure_notice = [0.0]
+
+        def pressure_notice(free_gb: float) -> None:
+            with pressure_lock:
+                now = time.monotonic()
+                if now - last_pressure_notice[0] >= 30:
+                    console.print(
+                        f"[yellow]Disk pressure: {free_gb:.1f} GB free; "
+                        "pausing admissions.[/yellow]"
+                    )
+                    last_pressure_notice[0] = now
+
+        guard = DiskGuard(
+            settings.artifacts_dir,
+            min_free_disk_gb,
+            disk_backoff_seconds,
+            on_pressure=pressure_notice,
+        )
+
+        def show_result(result: FleetResult, completed: int, total: int) -> None:
+            detail = f": {result.error}" if result.error else ""
+            console.print(
+                f"[{completed}/{total}] {result.task_id} sample {result.sample}: "
+                f"{result.verdict}{detail}"
+            )
+
+        scheduled = FleetScheduler(
+            LocalBackend(execute_job),
+            concurrency=concurrency,
+            container_limit=container_limit,
+            disk_guard=guard,
+        ).run(pending, on_result=show_result)
+        results = sorted([*resumed, *scheduled], key=lambda r: (r.task_id, r.sample))
+        failures = [result for result in results if result.verdict == "ERROR"]
+        rec.db.finish_fleet(fleet_id, "partial" if failures else "completed", utc_now_iso())
+
+        table = Table(title=f"Fleet {fleet_id}")
+        for column in ("task", "sample", "run", "verdict", "source"):
+            table.add_column(column)
+        for result in results:
+            style = "green" if result.verdict == "RESOLVED" else "red"
+            table.add_row(
+                result.task_id,
+                str(result.sample),
+                result.run_id,
+                f"[{style}]{result.verdict}[/{style}]",
+                "resumed" if result.resumed else "executed",
+            )
+        console.print(table)
+
+        pass_values = {str(k): pass_at_k(results, k) for k in range(1, samples + 1)}
+        console.print(
+            "  ".join(
+                f"pass@{k}: {value:.1%}" for k, value in pass_values.items() if value is not None
+            )
+        )
+        summary = {
+            "schema_version": 1,
+            "fleet_id": fleet_id,
+            "config_hash": config_hash,
+            "backend": backend,
+            "jobs": [result.__dict__ for result in results],
+            "pass_at_k": pass_values,
+        }
+        rec.save_artifact(
+            "fleet_summary",
+            "fleet_summary.json",
+            json.dumps(summary, indent=2, sort_keys=True) + "\n",
+        )
+        rec.log(
+            f"fleet {fleet_id}: {len(results) - len(failures)} completed, {len(failures)} errors"
+        )
+        if failures:
+            details = "; ".join(
+                f"{result.task_id}[{result.sample}]: {result.error}" for result in failures[:5]
+            )
+            raise TaskError(
+                f"Fleet finished with {len(failures)} errored job(s); rerun the same command "
+                f"to resume. {details}"
+            )
 
 
 @app.command("verify-gold")
@@ -685,9 +964,12 @@ def diff(
             raise TaskError(
                 f"No run {run_id!r} in {settings.db_path}. Use `task runs list` to see ids."
             )
-        artifact = next(
-            (a for a in db.artifacts_for(run["command_id"]) if a["type"] == "solver_diff"), None
-        )
+        run_artifacts = db.artifacts_for_run(run_id)
+        # Compatibility with pre-fleet rows that lacked run_id. Only safe when the
+        # command produced a single run; otherwise it would surface a sibling's diff.
+        if not run_artifacts and db.count_runs_for_command(run["command_id"]) == 1:
+            run_artifacts = db.artifacts_for(run["command_id"])
+        artifact = next((a for a in run_artifacts if a["type"] == "solver_diff"), None)
         if artifact is None:
             raise TaskError(
                 f"Run {run_id} has no stored diff (it likely errored before the solve phase)."
@@ -739,11 +1021,19 @@ def clean(
                 raise TaskError(
                     f"No run {run_id!r} in {settings.db_path}. Use `task runs list` to see ids."
                 )
+            run_artifacts = db.artifacts_for_run(run_id)
+            sole_run = db.count_runs_for_command(run["command_id"]) == 1
             command_dir = settings.artifacts_dir / run["command_id"]
         finally:
             db.close()
-        if command_dir.exists():
-            dirs = [command_dir]
+        artifact_dirs = sorted({Path(row["path"]).parent for row in run_artifacts})
+        dirs = [path for path in artifact_dirs if path.exists()]
+        if not dirs:
+            # No artifacts recorded (the run errored, or predates run_id tracking). A
+            # command with several runs nests each under its run id, so only a
+            # single-run command's whole directory belongs to this run.
+            fallback = command_dir if sole_run else command_dir / run_id
+            dirs = [fallback] if fallback.exists() else []
     else:
         assert bundle_path is not None
         bundle = Bundle.load(bundle_path)

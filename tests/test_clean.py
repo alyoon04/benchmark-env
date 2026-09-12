@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from conftest import F2P_TEST, P2P_TEST, make_initialized_bundle
+from conftest import F2P_TEST, P2P_TEST, make_initialized_bundle, seed_fleet_command
 from typer.testing import CliRunner
 
 from task_bundle.bundle import Bundle
@@ -43,6 +43,16 @@ def test_clean_run_removes_artifacts_but_keeps_history(tmp_path: Path, isolated_
     assert result.exit_code == 0, result.output
     assert not command_dir.exists()
     assert Database(isolated_db).get_run(run_id) is not None  # log/run history survives
+
+
+def test_clean_errored_fleet_run_keeps_sibling_artifacts(tmp_path: Path, isolated_db: Path) -> None:
+    command_dir = seed_fleet_command(isolated_db, tmp_path / "artifacts")
+
+    result = runner.invoke(app, ["clean", "--run", "run_err", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert not (command_dir / "run_err").exists()
+    assert (command_dir / "run_ok" / "solver.diff").exists()  # sibling run untouched
 
 
 def test_clean_unknown_run_errors(isolated_db: Path) -> None:

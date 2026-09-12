@@ -25,9 +25,11 @@ record of the design; `DESIGN.md` is the working scratchpad it was drawn from, a
    recorded tool versions, deterministic JSON reports.
 6. **Observability.** Every invocation is recorded; artifacts (diffs, test output,
    transcripts, build logs, reports) live on disk and are referenced by path.
+7. **Scalable execution.** Fleets run task/sample pairs concurrently with bounded
+   container admission, disk backoff, durable resume, pass@k, and a Kubernetes runtime.
 
-Non-goals (future work): parallel/fleet execution, remote backends (k8s/Modal),
-multi-attempt orchestration (pass@k).
+Non-goals (future work): hosted control-plane operation, automatic cluster provisioning,
+and warm-container reuse across independent solver attempts.
 
 ---
 
@@ -248,6 +250,7 @@ are reserved for genuine bugs.
 | `init` | Scaffold, clone at the pinned commit, build + smoke-test the task image. |
 | `validate` | Confirm the baseline contract (p2p pass, f2p fail), 3× for flake detection. |
 | `run` | Baseline → solve → grade; emit verdict, before/after table, JSON report. |
+| `fleet` | Concurrent, resumable task/sample runs with disk gating and pass@k. |
 | `verify-gold` | Prove solvability: apply `patch.diff`, confirm f2p flips and p2p holds. |
 | `import-swebench` | Convert a public SWE-bench Pro instance into a ready-to-validate bundle. |
 | `diff` | Print a run's stored solver patch. |
@@ -284,8 +287,10 @@ the whole point is to show the patch is what makes the task solvable.
 - **Per-test exec granularity.** One container-exec per test path is simple and language-
   agnostic but slower than a single batched invocation. Fine at task scale; a batched mode
   is possible if throughput ever matters.
-- **No remote/parallel execution.** Single task, single machine, one attempt — by design;
-  fleet and pass@k orchestration are out of scope.
+- **No cross-run warm-container pool.** `task fleet` provides bounded local/Kubernetes
+  concurrency, crash resume, and pass@k, but each grading phase still starts from a fresh
+  task image. That preserves isolation while the apply-diff-in-place grading redesign is
+  underway; safe warm reuse belongs after that boundary is stable.
 - **`clean --all` deletes machine-global images.** Docker images are not namespaced per
   bundle run, so `--all` removes every `task-bundle/*` image; hence the confirmation
   prompt and the per-bundle / per-run targeting options.

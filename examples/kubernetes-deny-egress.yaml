@@ -1,0 +1,11 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: task-bundle-deny-egress
+spec:
+  podSelector:
+    matchLabels:
+      task-bundle/network: "off"
+  policyTypes:
+    - Egress
+  egress: []
