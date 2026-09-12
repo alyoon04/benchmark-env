@@ -1,29 +1,46 @@
-"""Workspace management: pinned-commit clones (and, later, cleaned solver trees).
+"""Workspace management: pinned-commit clones, patch materialization, changesets, diffs.
 
 The baseline workspace lives at ``<bundle>/.task/workspace`` and is the
 orchestrator-side source of truth for the repo at the pinned commit. The clone is
 shallow (``fetch --depth 1 <sha>``) so the checkout cannot contain future commits —
 defense in depth for the test-hiding invariant, and faster besides.
+
+Solvers work *in place* in a container of the task image; this module holds the pure
+host-side pieces of that protocol: parsing content manifests, computing the changeset
+between two manifests (honouring the repo's own ``.gitignore``), rendering a unified
+diff from before/after copies of the changed files, and the hidden-content leak guard.
 """
 
+import hashlib
 import os
 import shutil
 import subprocess
+import tempfile
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from task_bundle.errors import GitError, HiddenTestLeak
 
-_SNAPSHOT_ENV = {
+_NO_USER_CONFIG = {
     "GIT_CONFIG_GLOBAL": "/dev/null",
     "GIT_CONFIG_SYSTEM": "/dev/null",
-    "GIT_AUTHOR_NAME": "task-bundle",
-    "GIT_AUTHOR_EMAIL": "task-bundle@localhost",
-    "GIT_COMMITTER_NAME": "task-bundle",
-    "GIT_COMMITTER_EMAIL": "task-bundle@localhost",
 }
 
+# Engine hygiene, applied on top of the repo's own .gitignore when computing a
+# changeset: bytecode/caches that any test run leaves behind and that no solver
+# means as part of its fix. Deliberately tiny — everything else is the repo's call.
+DEFAULT_IGNORES = ["__pycache__/", "*.pyc", "*.pyo", ".pytest_cache/"]
 
-def _git(args: list[str], cwd: Path, timeout: int = 600, env: dict[str, str] | None = None) -> str:
+
+def _git(
+    args: list[str],
+    cwd: Path,
+    timeout: int = 600,
+    env: dict[str, str] | None = None,
+    ok_codes: tuple[int, ...] = (0,),
+) -> subprocess.CompletedProcess[str]:
     cmd = ["git", *args]
     # Every call site operates on a repo at cwd or on plain files (apply/numstat).
     # Stop upward .git discovery so an unrelated enclosing repo (e.g. a git-managed
@@ -45,9 +62,13 @@ def _git(args: list[str], cwd: Path, timeout: int = 600, env: dict[str, str] | N
         raise GitError("git executable not found on PATH. Install git and retry.") from e
     except subprocess.TimeoutExpired as e:
         raise GitError(f"`{' '.join(cmd)}` timed out after {timeout}s.") from e
-    if proc.returncode != 0:
+    if proc.returncode not in ok_codes:
         raise GitError(f"`{' '.join(cmd)}` failed (exit {proc.returncode}):\n{proc.stderr.strip()}")
-    return proc.stdout
+    return proc
+
+
+def _git_out(args: list[str], cwd: Path, timeout: int = 600) -> str:
+    return _git(args, cwd, timeout).stdout
 
 
 def resolve_repo_url(url: str, bundle_path: Path) -> str:
@@ -95,7 +116,7 @@ def _head_commit(repo: Path) -> str | None:
     if not (repo / ".git").exists():
         return None
     try:
-        return _git(["rev-parse", "HEAD"], cwd=repo).strip()
+        return _git_out(["rev-parse", "HEAD"], cwd=repo).strip()
     except GitError:
         return None
 
@@ -103,10 +124,10 @@ def _head_commit(repo: Path) -> str | None:
 def build_clean_tree(workspace: Path, dest: Path, excludes: list[str] | None = None) -> None:
     """Copy the baseline workspace to ``dest`` WITHOUT .git and without ``excludes``.
 
-    This is the only way solver-visible trees and image build contexts are made:
-    excluded content is never copied in the first place (never copy-then-delete),
-    which is the structural half of the test-hiding invariant (DESIGN.md §3).
-    ``excludes`` are repo-root-relative paths (files or directories).
+    This is how native bundles' image build contexts are made: excluded content is
+    never copied in the first place (never copy-then-delete), which is the
+    structural half of the test-hiding invariant (DESIGN.md §3). ``excludes`` are
+    repo-root-relative paths (files or directories).
     """
     if dest.exists():
         shutil.rmtree(dest)
@@ -119,26 +140,11 @@ def build_clean_tree(workspace: Path, dest: Path, excludes: list[str] | None = N
     shutil.copytree(workspace, dest, ignore=_ignore, symlinks=True)
 
 
-def snapshot_tree(tree: Path) -> None:
-    """Init an orchestrator-side git repo in ``tree`` and commit its current state.
-
-    Used to capture the solver's diff afterwards. This .git exists only on the host;
-    trees sent into containers are rebuilt without it (build_clean_tree).
-    """
-    _git(["init", "--quiet"], cwd=tree, env=_SNAPSHOT_ENV)
-    _git(["add", "-A"], cwd=tree, env=_SNAPSHOT_ENV)
-    _git(["commit", "--quiet", "--allow-empty", "-m", "pre-solver snapshot"], cwd=tree,
-         env=_SNAPSHOT_ENV)  # fmt: skip
-
-
-def capture_diff(tree: Path) -> str:
-    """Unified diff of everything the solver changed since ``snapshot_tree``."""
-    _git(["add", "-A"], cwd=tree, env=_SNAPSHOT_ENV)
-    return _git(["diff", "--cached", "--no-color"], cwd=tree, env=_SNAPSHOT_ENV)
+# -- patches -----------------------------------------------------------------
 
 
 def apply_patch(tree: Path, patch: Path) -> None:
-    """Apply a unified diff to ``tree`` (used by StubSolver and verify-gold)."""
+    """Apply a unified diff to ``tree`` (a plain directory; no repo required)."""
     try:
         _git(["apply", "--whitespace=nowarn", str(patch)], cwd=tree)
     except GitError as e:
@@ -148,22 +154,207 @@ def apply_patch(tree: Path, patch: Path) -> None:
         ) from e
 
 
+def _rename_sources(patch: Path) -> list[str]:
+    """Sources of ``rename``/``copy`` hunks, which ``--numstat`` reports only by destination."""
+    lines = patch.read_text(errors="replace").splitlines()
+    return [
+        line[len(prefix) :]
+        for line in lines
+        for prefix in ("rename from ", "copy from ")
+        if line.startswith(prefix)
+    ]
+
+
 def patch_changed_paths(patch: Path) -> list[str]:
-    """Repo-relative paths a unified diff touches (via ``git apply --numstat``)."""
-    out = _git(["apply", "--numstat", str(patch)], cwd=patch.parent)
-    return [line.split("\t", 2)[2] for line in out.splitlines() if line.strip()]
+    """Repo-relative paths a unified diff touches (via ``git apply --numstat``).
 
-
-def assert_no_hidden_content(tree: Path, hidden_blobs: list[bytes]) -> None:
-    """Abort if any hidden blob's exact content appears anywhere in ``tree``.
-
-    Pre-flight guard run on solver-visible trees. Content comparison (not name
-    comparison) because a same-named file with different content is legitimate,
-    while identical bytes under any name is a leak.
+    numstat reports a rename/copy by its *destination* only, so the ``rename from`` /
+    ``copy from`` sources are parsed out of the patch and appended: ``git apply`` needs
+    the source staged before it will run, and the source has to be deleted wherever the
+    patch is replayed.
     """
-    hidden_contents = set(hidden_blobs)
-    for path in tree.rglob("*"):
-        if path.is_file() and path.read_bytes() in hidden_contents:
+    out = _git_out(["apply", "--numstat", str(patch)], cwd=patch.parent)
+    paths = [line.split("\t", 2)[2] for line in out.splitlines() if line.strip()]
+    seen = set(paths)
+    for source in _rename_sources(patch):
+        if source not in seen:
+            seen.add(source)
+            paths.append(source)
+    return paths
+
+
+@contextmanager
+def materialize_patch(baseline: Path, patch: Path) -> Iterator[tuple[Path, list[str]]]:
+    """Apply ``patch`` to a *sparse* copy of ``baseline`` holding only the touched files.
+
+    Yields ``(tree, paths)``: the temporary tree with the patched files, and every
+    path the patch touches (a path absent from ``tree`` was deleted by the patch).
+    Sparse because ``git apply`` only reads the files it patches — copying a whole
+    monorepo to change three files is what made large instances impractical.
+    """
+    paths = patch_changed_paths(patch)
+    with tempfile.TemporaryDirectory(prefix="task-bundle-patch-") as tmp:
+        tree = Path(tmp) / "tree"
+        tree.mkdir()
+        for rel in paths:
+            src = baseline / rel
+            if src.is_file() or src.is_symlink():
+                dest = tree / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest, follow_symlinks=False)
+        apply_patch(tree, patch)
+        yield tree, paths
+
+
+# -- manifests and changesets ------------------------------------------------
+
+
+def parse_manifest(text: str) -> dict[str, str]:
+    """Parse ``sha256sum`` output (``<hash>  ./path`` per line) into path -> hash.
+
+    Handles coreutils' escaped form (a leading backslash, with ``\\n``/``\\\\`` in the
+    name) so a hostile filename cannot corrupt the changeset.
+    """
+    manifest: dict[str, str] = {}
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        escaped = line.startswith("\\")
+        body = line[1:] if escaped else line
+        digest, _, name = body.partition("  ")
+        if escaped:
+            name = name.replace("\\n", "\n").replace("\\\\", "\\")
+        manifest[name.removeprefix("./")] = digest
+    return manifest
+
+
+def tree_manifest(tree: Path) -> dict[str, str]:
+    """Host-side equivalent of the in-container manifest: relative path -> sha256."""
+    manifest = {}
+    for path in sorted(tree.rglob("*")):
+        if path.is_file() and not path.is_symlink():
+            manifest[path.relative_to(tree).as_posix()] = hashlib.sha256(
+                path.read_bytes()
+            ).hexdigest()
+    return manifest
+
+
+@dataclass(frozen=True)
+class Changeset:
+    """What a solver changed, as sorted repo-relative paths."""
+
+    modified: tuple[str, ...] = ()
+    added: tuple[str, ...] = ()
+    deleted: tuple[str, ...] = ()
+
+    @property
+    def present(self) -> list[str]:
+        """Paths that exist after the change (to copy into the grade container)."""
+        return sorted((*self.modified, *self.added))
+
+    @property
+    def existed(self) -> list[str]:
+        """Paths that existed before the change (whose baseline versions the diff needs)."""
+        return sorted((*self.modified, *self.deleted))
+
+    @property
+    def all_paths(self) -> list[str]:
+        return sorted((*self.modified, *self.added, *self.deleted))
+
+    def __bool__(self) -> bool:
+        return bool(self.modified or self.added or self.deleted)
+
+
+def compute_changeset(
+    before: Mapping[str, str], after: Mapping[str, str], ignored: Iterable[str] = ()
+) -> Changeset:
+    """Diff two manifests; ``ignored`` paths (per git rules) are dropped from every bucket."""
+    skip = set(ignored)
+    modified = [p for p in before if p in after and before[p] != after[p] and p not in skip]
+    added = [p for p in after if p not in before and p not in skip]
+    deleted = [p for p in before if p not in after and p not in skip]
+    return Changeset(tuple(sorted(modified)), tuple(sorted(added)), tuple(sorted(deleted)))
+
+
+def ignored_paths(repo: Path, paths: Iterable[str]) -> set[str]:
+    """Subset of ``paths`` that git would ignore in ``repo`` (its .gitignore rules).
+
+    Tracked files are never reported ignored (plain ``check-ignore`` semantics), so a
+    tracked file the solver edited always counts even if a pattern matches it.
+    ``DEFAULT_IGNORES`` are layered on via a throwaway excludes file.
+    """
+    candidates = [p for p in paths if p]
+    if not candidates or not (repo / ".git").exists():
+        return set()
+    with tempfile.NamedTemporaryFile("w", suffix=".gitignore", delete=False) as f:
+        f.write("\n".join(DEFAULT_IGNORES) + "\n")
+        excludes = f.name
+    try:
+        proc = subprocess.run(
+            ["git", "-c", f"core.excludesFile={excludes}", "check-ignore", "--stdin", "-z"],
+            cwd=repo,
+            input="\0".join(candidates) + "\0",
+            capture_output=True,
+            text=True,
+            check=False,
+            env={
+                **os.environ,
+                **_NO_USER_CONFIG,
+                "GIT_CEILING_DIRECTORIES": str(repo.resolve().parent),
+            },
+        )
+    except FileNotFoundError as e:
+        raise GitError("git executable not found on PATH. Install git and retry.") from e
+    finally:
+        os.unlink(excludes)
+    if proc.returncode not in (0, 1):  # 1 = nothing ignored
+        raise GitError(f"git check-ignore failed (exit {proc.returncode}): {proc.stderr.strip()}")
+    return {p for p in proc.stdout.split("\0") if p}
+
+
+def render_diff(before: Path, after: Path) -> str:
+    """Unified diff between two sparse trees, in ``git apply``-able ``a/``/``b/`` form.
+
+    The trees are staged as ``a`` and ``b`` and diffed with ``--no-prefix``, so the
+    directory names *become* the conventional prefixes. Files present on only one
+    side come out as creations/deletions; binaries as "Binary files ... differ".
+    """
+    with tempfile.TemporaryDirectory(prefix="task-bundle-diff-") as tmp:
+        root = Path(tmp)
+        shutil.copytree(before, root / "a", symlinks=True)
+        shutil.copytree(after, root / "b", symlinks=True)
+        proc = _git(
+            [
+                "-c",
+                "core.quotepath=off",
+                "diff",
+                "--no-index",
+                "--no-prefix",
+                "--no-color",
+                "a",
+                "b",
+            ],
+            cwd=root,
+            env=_NO_USER_CONFIG,
+            ok_codes=(0, 1),  # 1 = differences found
+        )
+        return proc.stdout
+
+
+# -- leak guard ---------------------------------------------------------------
+
+
+def assert_no_hidden_content(manifest: Mapping[str, str], hidden_blobs: list[bytes]) -> None:
+    """Abort if any hidden blob's exact content appears in a solver-visible manifest.
+
+    Pre-flight guard run on the solve container before the solver starts. Content
+    comparison (sha256 of the blob vs. the manifest's per-file hashes), not name
+    comparison: a same-named file with different content is legitimate, while
+    identical bytes under any name is a leak.
+    """
+    hidden = {hashlib.sha256(blob).hexdigest() for blob in hidden_blobs}
+    for path, digest in manifest.items():
+        if digest in hidden:
             raise HiddenTestLeak(
                 f"File {path} in the solver-visible tree is byte-identical to a hidden "
                 "test. Refusing to continue; the solver must never see hidden tests."

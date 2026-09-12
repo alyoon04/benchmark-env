@@ -73,14 +73,27 @@ class TestDockerfile:
         b = make_bundle(tmp_path, "b")
         assert generate_dockerfile(a) == generate_dockerfile(b)
 
-    def test_no_symlink_for_native_workdir(self, tmp_path: Path) -> None:
+    def test_native_layout_copies_clone(self, tmp_path: Path) -> None:
         df = generate_dockerfile(make_bundle(tmp_path), work_dir="/workspace")
-        assert "ln -s" not in df
+        assert "COPY" in df
+        assert "WORKDIR /workspace" in df
+        assert ".git" not in df  # the clean tree never had one
 
-    def test_symlinks_discovered_repo_path(self, tmp_path: Path) -> None:
+    def test_prebuilt_layout_keeps_repo_in_place(self, tmp_path: Path) -> None:
+        """The image's own repo dir is used as-is: no COPY, no symlink, .git scrubbed."""
         df = generate_dockerfile(make_bundle(tmp_path), work_dir="/app")
-        assert "RUN rm -rf /app && ln -s /workspace /app" in df
-        assert "WORKDIR /workspace" in df  # solver still works in the clean tree
+        assert "COPY" not in df
+        assert "ln -s" not in df
+        assert "WORKDIR /app" in df
+        assert "find /app -name .git -prune -exec rm -rf {} +" in df
+        assert "RUN chown -R 1000:1000 /app" in df
+
+    def test_prebuilt_layout_removes_excludes(self, tmp_path: Path) -> None:
+        b = make_bundle(tmp_path)
+        b.spec.solver.workspace_excludes = ["tests/hidden", "secret.md"]
+        df = generate_dockerfile(b, work_dir="/app")
+        assert "rm -rf /app/tests/hidden" in df
+        assert "rm -rf /app/secret.md" in df
 
 
 class _FakeDocker:

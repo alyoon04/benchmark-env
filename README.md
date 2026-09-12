@@ -12,12 +12,15 @@ isolation — with every command logged to a queryable SQLite database.
 > tested, and documented.
 >
 > **Validated scope:** the full flow (incl. a live Claude solve → RESOLVED) is proven
-> end-to-end on a real *Python* SWE-bench Pro instance — see
-> [`evaluation/`](evaluation/). A cross-language sweep
-> ([`evaluation/multi-instance/`](evaluation/multi-instance/)) showed the engine grades
-> Python-editable, pure-git repos and uses `verify-gold` to *refuse* (never mis-grade)
-> instances whose deps live under the repo dir (submodules, `node_modules`); closing
-> that gap is documented as future work in [DESIGN_NOTES.md](DESIGN_NOTES.md).
+> end-to-end on real SWE-bench Pro instances — see [`evaluation/`](evaluation/).
+> Grading works **in place** on the image's own repo tree, so instances whose
+> dependencies live under the repo dir outside git (submodule checkouts, `node_modules`,
+> compiled extensions) grade correctly; the cross-language sweep in
+> [`evaluation/multi-instance/`](evaluation/multi-instance/) shows the openlibrary
+> instance that used to be refused now verifying, and the Go path executing real
+> `go test` runs (blocked on this arm64 host only by the amd64 toolchain segfaulting
+> under qemu). `verify-gold` still *refuses* (never mis-grades) anything it cannot
+> prove solvable.
 
 ## Why
 
@@ -97,20 +100,33 @@ Optional `patch.diff` at the bundle root is the golden patch (used by
 ## The test-hiding guarantee
 
 The solver must never see fail2pass/pass2pass tests before grading. This is enforced
-structurally, not by convention (DESIGN.md §3):
+structurally, not by convention (DESIGN_NOTES.md §3):
 
 - Hidden tests live only in the bundle on the host; they are staged into a separate
-  evaluation container **after** the solver's diff is captured — they never enter the
-  solver's workspace or any image layer (no copy-then-delete).
-- The solver workspace is built by *excluding* hidden paths from the copy, and `.git`
-  is scrubbed; the workspace clone itself is shallow (`fetch --depth 1 <sha>`), so
-  hidden tests can't be recovered from history.
+  evaluation container **after** the solver's changes are captured — they never enter
+  the solver's container or any image layer (no copy-then-delete).
+- Native task images are built by *excluding* hidden paths from the copy, and `.git`
+  is scrubbed (also from prebuilt images, whose clones carry full history); the host
+  clone itself is shallow (`fetch --depth 1 <sha>`), so hidden tests can't be recovered
+  from history.
 - Hidden tests reach containers only via `docker cp` into a *running* container at
   validate/grade time, so they never appear in any image layer.
-- An automated leak guard (`workspace.assert_no_hidden_content`, covered by the test
-  suite) detects hidden-test content in solver-visible trees by byte comparison.
+- An automated leak guard hashes every file in the solve container before the solver
+  starts and aborts (exit 3) if any file is byte-identical to a hidden test — covered by
+  unit tests and an end-to-end test that plants a leak.
 
 Tests outside the hidden buckets stay visible to the solver.
+
+## How a run grades
+
+The solver works **in place** inside a hardened container of the task image. The
+orchestrator hashes the repo tree before and after; the difference, filtered through the
+repo's own `.gitignore`, is the solver's changeset. A *fresh* container then gets exactly
+that changeset replayed (files copied in, deletions applied), the hidden tests staged, and
+the suites run. Nothing else in the image is touched, so dependencies that live under the
+repo directory but outside git — submodule checkouts, `node_modules`, compiled
+extensions — are present at grade time exactly as the image shipped them. No `git` or
+`patch` is needed inside the image.
 
 ## Solvers
 
@@ -120,9 +136,10 @@ Tests outside the hidden buckets stay visible to the solver.
 - **claude** — an agentic loop over the Claude API (`--model`, default
   `claude-opus-4-7` or `$ANTHROPIC_MODEL`; requires `ANTHROPIC_API_KEY`). The model
   gets list_dir/read_file/write_file/run_command tools, all executed **inside the
-  hardened container** (network off, non-root) — solver-controlled code never runs
-  on the host. Budgets: `--max-iterations` (default 30), 30-minute wall clock,
-  bounded tool output. Tokens and estimated cost land in the run stats.
+  hardened solve container** (network off, non-root) — solver-controlled code never
+  runs on the host, and only the files it changed ever leave the container. Budgets:
+  `--max-iterations` (default 30), 30-minute wall clock, bounded tool output. Tokens
+  and estimated cost land in the run stats.
 
 ## Isolation model
 
@@ -140,8 +157,8 @@ gets a fresh container so runs cannot contaminate each other.
 | `task validate <bundle> [--attempts N] [--rebuild]` | ✅ | Baseline contract: pass2pass all pass, fail2pass all fail; each suite runs 3× in fresh containers and flaky tests are flagged. Exit 2 with specific reasons on violation. |
 | `task logs [<command-id>]` | ✅ | No argument: list recent commands. With an id: show argv, exit code, per-test results, artifacts, and the command log. |
 | `task runs list` / `task runs show <run-id>` | ✅ | Query solver runs (populated by `task run`). |
-| `task run <bundle> [--solver stub\|claude] [--patch FILE \| --gold] [--model M] [--max-iterations N] [--rebuild]` | ✅ | Baseline → solve → grade in separate containers; before/after table, RESOLVED/UNRESOLVED verdict, sorted-key `report.json` + `solver.diff`/transcript artifacts, run + token/cost stats recorded in DB. `claude` solver needs `ANTHROPIC_API_KEY`. |
-| `task import-swebench <instance-id> [--dest DIR] [--test-command TPL] [--timeout N] [--no-init] [--no-verify]` | ✅ | Convert a public SWE-bench Pro instance (ScaleAI/SWE-bench_Pro on HuggingFace) into a ready-to-validate bundle: prebuilt instance image as base, hidden tests as test patch + explicit f2p/p2p ids, gold patch saved as `patch.diff`. The repo path is discovered from the image (no `/app` hardcode), and after `--init` it auto-runs `verify-gold` so a non-gradeable instance fails loudly at import. See `evaluation/` for a real end-to-end run. |
+| `task run <bundle> [--solver stub\|claude] [--patch FILE \| --gold] [--model M] [--max-iterations N] [--rebuild]` | ✅ | Baseline → solve in place → replay changeset → grade, in separate containers; before/after table, changed/added/deleted counts, RESOLVED/UNRESOLVED verdict, sorted-key `report.json` + `solver.diff`/transcript artifacts, run + token/cost stats recorded in DB. `claude` solver needs `ANTHROPIC_API_KEY`. |
+| `task import-swebench <instance-id> [--dest DIR] [--test-command TPL] [--timeout N] [--no-init] [--no-verify]` | ✅ | Convert a public SWE-bench Pro instance (ScaleAI/SWE-bench_Pro on HuggingFace) into a ready-to-validate bundle: prebuilt instance image as base, hidden tests as test patch + explicit f2p/p2p ids, gold patch saved as `patch.diff`. The repo path is discovered from the image (no `/app` hardcode) and used in place, so submodules/`node_modules`/caches under it survive; Go instances get scoped packages, anchored `-run` patterns, and a writable `GOCACHE`. After `--init` it auto-runs `verify-gold` so a non-gradeable instance fails loudly at import. See `evaluation/` for real end-to-end runs. |
 | `task verify-gold <bundle> [--rebuild]` | ✅ | Prove solvability: apply `patch.diff` via a deterministic stub solver and confirm every fail2pass test flips to pass and every pass2pass holds. Exit 2 (naming each offending test) if the golden patch doesn't cleanly resolve the task. Records no run — it's an authoring check. |
 | `task diff <run-id>` | ✅ | Print the unified diff a run's solver produced (raw, pipeable to `git apply`). |
 | `task doctor` | ✅ | Preflight checks — Docker daemon, git, `ANTHROPIC_API_KEY`, free disk. Exit 1 if a required dependency is missing. |
@@ -181,6 +198,7 @@ uv run ruff format .   # format
 uv run mypy            # strict type-checking
 ```
 
-Layout: `src/task_bundle/` (`bundle.py` spec/state, `workspace.py` pinned clones,
-`cli.py` typer app, `errors.py` actionable error hierarchy); fixture toy repo under
-`tests/fixtures/toy_repo/`.
+Layout: `src/task_bundle/` (`bundle.py` spec/state, `workspace.py` pinned clones +
+changeset/diff math, `harness.py` container orchestration, `run.py` the two-phase
+pipeline, `cli.py` typer app, `errors.py` actionable error hierarchy); fixture toy repo
+under `tests/fixtures/toy_repo/`.

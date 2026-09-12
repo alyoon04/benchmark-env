@@ -1,0 +1,41 @@
+{
+  "environment": {
+    "base_image": "jefzda/sweap-images:future-architect.vuls-future-architect__vuls-e52fa8d6ed1d23e36f2a86e5d3efe9aa057a1b0d",
+    "env": {
+      "GOCACHE": "/tmp/task-bundle-go-build",
+      "HOME": "/tmp"
+    },
+    "network_during_setup": true,
+    "setup_commands": []
+  },
+  "id": "vuls-should-download",
+  "language": "go",
+  "repo": {
+    "commit": "854821eb5489ac7448551f213f49bcf8159a110a",
+    "url": "https://github.com/future-architect/vuls"
+  },
+  "schema_version": 1,
+  "solver": {
+    "workspace_excludes": []
+  },
+  "tests": {
+    "command_template": "go test -run {test_path} ./detector/vuls2/",
+    "fail2pass_ids": [
+      "^Test_shouldDownload$",
+      "^Test_shouldDownload$/^schema_version_mismatch$",
+      "^Test_shouldDownload$/^schema_version_mismatch,_but_skip_update$"
+    ],
+    "pass2pass_ids": [
+      "^Test_shouldDownload$/^no_db_file$",
+      "^Test_shouldDownload$/^no_db_file,_but_skip_update$",
+      "^Test_shouldDownload$/^just_created$",
+      "^Test_shouldDownload$/^8_hours_old$",
+      "^Test_shouldDownload$/^8_hours_old,_but_skip_update$",
+      "^Test_shouldDownload$/^8_hours_old,_but_download_recently$"
+    ],
+    "staging_dir": "tests/",
+    "test_patch": "tests/test_patch.diff",
+    "timeout_seconds": 600,
+    "visible_test_paths": []
+  }
+}

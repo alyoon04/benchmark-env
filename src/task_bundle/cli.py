@@ -217,14 +217,20 @@ def init(
             docker = Docker()
             docker.ensure_available()
             with console.status("Building task image (cached by content hash)..."):
-                tag, build_log = ensure_image(docker, bundle, rebuild=rebuild)
-                smoke_test(docker, tag)
-            state.image_tag = tag
-            state.image_digest = docker.image_id(tag)
+                image, build_log = ensure_image(docker, bundle, rebuild=rebuild)
+                smoke_test(docker, image)
+            state.image_tag = image.tag
+            state.image_digest = docker.image_id(image.tag)
             if build_log:
                 rec.save_artifact("build_log", "image_build.log", build_log)
-            rec.log(f"image ready: {tag} (digest {state.image_digest}), smoke test passed")
-            console.print(f"[green]Image ready[/green]: {tag} (smoke test passed)")
+            rec.log(
+                f"image ready: {image.tag} (digest {state.image_digest}, repo at "
+                f"{image.repo_dir}), smoke test passed"
+            )
+            console.print(
+                f"[green]Image ready[/green]: {image.tag} (repo at {image.repo_dir}, "
+                "smoke test passed)"
+            )
         state.status = "initialized"
         state.initialized_at = utc_now_iso()
         bundle.save_state(state)
@@ -260,12 +266,12 @@ def validate(
         docker = Docker()
         docker.ensure_available()
         with console.status("Ensuring task image..."):
-            tag, build_log = ensure_image(docker, bundle, rebuild=rebuild)
+            image, build_log = ensure_image(docker, bundle, rebuild=rebuild)
         if build_log:
             rec.save_artifact("build_log", "image_build.log", build_log)
-        console.print(f"Image: {tag}")
+        console.print(f"Image: {image.tag}")
         with console.status(f"Running hidden test suites x{attempts} in fresh containers..."):
-            executions = run_baseline_suites(docker, bundle, tag, attempts=attempts)
+            executions = run_baseline_suites(docker, bundle, image, attempts=attempts)
         rec.add_test_results("baseline", executions)
         rec.save_artifact(
             "test_output",
@@ -308,8 +314,8 @@ def validate(
         state = bundle.load_state()
         state.status = "validated"
         state.validated_at = utc_now_iso()
-        state.image_tag = tag
-        state.image_digest = docker.image_id(tag)
+        state.image_tag = image.tag
+        state.image_digest = docker.image_id(image.tag)
         bundle.save_state(state)
         rec.log(f"baseline contract holds ({len(results)} tests x{attempts})")
         console.print(
@@ -370,8 +376,9 @@ def run(
 ) -> None:
     """Run a solver against the task, then grade it with the hidden tests.
 
-    Two-phase: the solver works on a workspace with no hidden tests (verified by a
-    content leak guard), then its diff is graded in a fresh evaluation container.
+    Two-phase: the solver works in place in a container with no hidden tests
+    (verified by a content leak guard), then its changeset is replayed into a fresh
+    evaluation container and graded.
     Verdict is RESOLVED only if all fail2pass tests now pass AND all pass2pass tests
     still pass. Emits a JSON report and records the run in SQLite.
     """
@@ -382,13 +389,13 @@ def run(
         docker = Docker()
         docker.ensure_available()
         with console.status("Ensuring task image..."):
-            tag, build_log = ensure_image(docker, bundle, rebuild=rebuild)
+            image, build_log = ensure_image(docker, bundle, rebuild=rebuild)
         if build_log:
             rec.save_artifact("build_log", "image_build.log", build_log)
 
         run_id = new_id("run")
         versions = tool_versions(docker)
-        digest = docker.image_id(tag)
+        digest = docker.image_id(image.tag)
         rec.db.insert_run(
             run_id,
             rec.command_id,
@@ -396,14 +403,14 @@ def run(
             solver_obj.name,
             solver_obj.model,
             utc_now_iso(),
-            tag,
+            image.tag,
             digest,
             json.dumps(versions, sort_keys=True),
         )
         rec.log(f"run {run_id} started (solver={solver_obj.name})")
         try:
             with console.status("Running baseline -> solve -> grade phases..."):
-                outcome = execute_run(docker, bundle, tag, solver_obj, rec.artifact_dir)
+                outcome = execute_run(docker, bundle, image, solver_obj)
         except BaseException:
             rec.db.finish_run(run_id, "ERROR", utc_now_iso())
             rec.log(f"run {run_id} errored")
@@ -435,7 +442,7 @@ def run(
             ),
         )
         report = build_report(
-            run_id, rec.command_id, bundle, solver_obj, outcome, tag, digest, versions
+            run_id, rec.command_id, bundle, solver_obj, outcome, image.tag, digest, versions
         )
         report_path = rec.artifact_dir / "report.json"
         write_report(report_path, report)
@@ -457,6 +464,11 @@ def run(
                 f"[{style}]{r.status}[/{style}]",
             )
         console.print(table)
+        changes = outcome.changes
+        console.print(
+            f"solver changed {len(changes.modified)} file(s), added {len(changes.added)}, "
+            f"deleted {len(changes.deleted)}"
+        )
         verdict_style = "bold green" if outcome.verdict == "RESOLVED" else "bold red"
         console.print(f"verdict: [{verdict_style}]{outcome.verdict}[/{verdict_style}]")
         rec.log(f"run {run_id} verdict: {outcome.verdict}")
@@ -489,11 +501,11 @@ def verify_gold(
         docker = Docker()
         docker.ensure_available()
         with console.status("Ensuring task image..."):
-            tag, build_log = ensure_image(docker, bundle, rebuild=rebuild)
+            image, build_log = ensure_image(docker, bundle, rebuild=rebuild)
         if build_log:
             rec.save_artifact("build_log", "image_build.log", build_log)
         with console.status("Running baseline -> apply gold -> grade..."):
-            outcome = execute_run(docker, bundle, tag, StubSolver(gold), rec.artifact_dir)
+            outcome = execute_run(docker, bundle, image, StubSolver(gold))
 
         rec.add_test_results("baseline", outcome.baseline)
         rec.add_test_results("post_gold", outcome.post_solver)
@@ -764,9 +776,7 @@ def clean(
         state.image_digest = None
         bundle.save_state(state)
 
-    console.print(
-        f"[green]Removed[/green] {len(images)} image(s) and {len(dirs)} director(y/ies)."
-    )
+    console.print(f"[green]Removed[/green] {len(images)} image(s) and {len(dirs)} director(y/ies).")
 
 
 _DISK_WARN_GB = 5.0

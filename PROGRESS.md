@@ -64,6 +64,13 @@
 | `import-swebench` auto-runs `verify-gold` after init (default; `--no-verify` opts out) | The editable-install assumption can't be *fixed* for a non-editable instance, only detected; auto-verify makes a non-gradeable bundle fail loudly at import instead of silently grading every solver UNRESOLVED |
 | Repo path for prebuilt images is *discovered* from the base image's `WorkingDir` (not hardcoded `/app`; `/` and empty fall back to `/workspace`); the symlink to the clean tree is applied at build time, not via task.json setup | Removes the brittle `/app` hardcode and works for any prebuilt-image convention; keeping the symlink (vs overlaying our clone onto the image's repo dir) keeps the solver's tree artifact-free, which diff capture requires |
 | Artifact preservation (compiled extensions under the repo path) was *not* added | It conflicts with clean diff capture (a solver editing a tree that also holds image build artifacts would diff them as changes); true support needs an apply-diff-in-place grade — documented future work |
+| **Solve in place; grade by replaying a changeset** (replaces clone-swap + wipe-then-overlay). The solve container's repo dir is hashed before/after (`find -exec sha256sum`, as root); modified/added/deleted paths, filtered by the repo's `.gitignore` + a tiny bytecode hygiene list, are the changeset; only those files are copied out and replayed into a fresh grade container | Grading no longer discards anything under the repo dir that isn't git-tracked (submodules, `node_modules`, compiled extensions, caches) — the exact failure the multi-instance sweep hit. No git/patch needed in the image; deletions handled; the diff is rendered host-side from the grade container's pristine copies, so it is honest to what was graded |
+| Prebuilt images keep their own repo dir (`WORKDIR` discovered, no COPY, no symlink); `.git` (incl. submodule `.git` files) scrubbed at build; tree chowned to the sandbox uid; `workspace_excludes` become `rm -rf` | The image's tree with its installed deps *is* the task; the symlink-to-clean-clone trick was what lost the deps. Full-history `.git` in the image would violate the test-hiding invariant. `IMAGE_LAYOUT_VERSION` in the cache key invalidates old-layout images |
+| Leak guard runs over the solve container's manifest (sha256 set intersection), not a host tree | Covers whatever the base image shipped, not just what the engine copied; zero extra I/O since the manifest is needed for the changeset anyway |
+| Stub solver and hidden-test staging both go through `materialize_patch` (sparse: only the touched files are copied from the clone) + `push_files` (cp in present paths, `rm` missing, chown) | One file-transport primitive for gold patches, test patches, and changeset replay; no whole-monorepo copies per phase |
+| Changeset ignores follow `git check-ignore` on the host clone (tracked files never ignored) plus `__pycache__/`, `*.pyc`, `*.pyo`, `.pytest_cache/` | Same semantics as the previous `git add -A` snapshot without needing a repo in the tree; the model's own `run_command` test runs leave bytecode behind that is not a change |
+| Changed files leave the container via one `tar` stream per 500 paths (`Docker.archive`), not one `docker cp` per file | Seconds instead of minutes when a solver touches thousands of files |
+| Go imports: test command scoped to the packages the test patch touches, ids anchored per level (`^Top$/^sub$`), `GOCACHE=/tmp/task-bundle-go-build` | `-run` is an unanchored per-level regex (`Test_x/case` also matches `case_extra`); `./...` compiled the whole module per id; the default `$HOME/.cache` had been pre-created root-owned by orchestrator execs |
 
 ## Current state
 
@@ -71,16 +78,21 @@ All eight milestones complete. The full surface — `init`, `validate`, `run`
 (stub + claude), `verify-gold`, `import-swebench`, `diff`, `logs`, `runs`,
 `doctor`, `clean` — is implemented, tested, and documented. `DESIGN_NOTES.md` is
 the distilled final design deliverable; `.github/workflows/ci.yml` runs ruff +
-mypy + the non-docker suite on a 3.11/3.12 matrix. User-facing docs and CLI
-messages were swept of stale milestone/"planned" references. 124 tests
-(12 docker-marked), ruff + mypy --strict clean.
+mypy + the non-docker suite on a 3.11/3.12 matrix.
+
+Post-milestone: grading moved to **solve-in-place + changeset replay** (see the
+decision table), closing the scope gap the multi-instance sweep exposed — repos
+whose deps live under the repo dir outside git now grade correctly (see
+`evaluation/multi-instance/`). 146 tests (17 docker-marked), ruff + mypy --strict
+clean.
 
 ## Possible follow-ups (out of original scope)
 
 - Live ClaudeSolver hand-test against a real SWE-bench Pro instance (only stub
   proven end-to-end on the real instance so far).
-- Non-editable / compiled-extension `import-swebench` support via an apply-diff-in-place
-  grade + optional reinstall (the editable case and the `/app` hardcode are now handled;
-  non-editable is detected loudly by the auto verify-gold guard).
+- Non-editable-install `import-swebench` support via an optional per-language reinstall
+  step (in-place grading now handles editable installs, submodules, `node_modules` and
+  compiled extensions; a non-editable install is still detected loudly by the auto
+  verify-gold guard).
 - Batched test execution (one exec for many test paths) if throughput matters.
 - Digest-pin example base images for fully reproducible builds.

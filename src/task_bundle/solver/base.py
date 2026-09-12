@@ -1,9 +1,10 @@
-"""The Solver protocol: anything that can attempt a task given a workspace.
+"""The Solver protocol: anything that can attempt a task inside its container.
 
-A solver receives a workspace tree that is guaranteed to contain no hidden tests
-(the orchestrator enforces this before the solve phase) and mutates it in place.
-The orchestrator snapshots the tree beforehand and captures the diff afterwards,
-so solvers never produce patches themselves — they just edit files.
+A solver receives a running, hardened container of the task image whose repo dir
+is guaranteed to contain no hidden tests (the orchestrator verifies this against a
+content manifest before the solve phase) and mutates that tree in place. The
+orchestrator hashes the tree before and after, so solvers never produce patches
+themselves — they just edit files.
 """
 
 from dataclasses import dataclass, field
@@ -15,24 +16,28 @@ from task_bundle.container import Docker
 
 @dataclass
 class SolveContext:
-    """Everything a solver may see: the cleaned workspace and the problem statement.
+    """Everything a solver may use.
 
-    ``docker``/``image_tag`` let agentic solvers start a hardened container of the
-    task image and execute commands inside it; solver-controlled operations must
-    never run on the host.
+    ``docker``/``container_id``/``repo_dir`` are the solver's workspace: a running
+    container (network off, non-root, resource-limited) with the repository at
+    ``repo_dir``. Solver-controlled operations must run inside it, never on the
+    host. ``baseline_tree`` is the orchestrator's host-side clone at the pinned
+    commit, for solvers that materialize patches host-side (StubSolver); it is
+    never shown to a model.
     """
 
-    workspace: Path
+    docker: Docker
+    container_id: str
+    repo_dir: str
+    baseline_tree: Path
     description: str
     test_command_template: str
     timeout_seconds: int
-    docker: Docker | None = None
-    image_tag: str | None = None
 
 
 @dataclass
 class SolveResult:
-    """Solver telemetry; the actual output is the mutated workspace."""
+    """Solver telemetry; the actual output is the mutated repo dir in the container."""
 
     transcript: str = ""
     input_tokens: int | None = None
@@ -42,7 +47,7 @@ class SolveResult:
 
 
 class Solver(Protocol):
-    """Strategy interface; implementations: StubSolver (M4), ClaudeSolver (M5)."""
+    """Strategy interface; implementations: StubSolver, ClaudeSolver."""
 
     name: str
     model: str | None

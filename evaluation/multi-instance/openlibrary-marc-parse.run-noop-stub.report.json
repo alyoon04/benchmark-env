@@ -1,0 +1,387 @@
+{
+  "command_id": "cmd_1a093550d29-78feeac8",
+  "diff": "",
+  "finished_at": "2026-09-12T02:04:52+00:00",
+  "image": {
+    "digest": "sha256:f4981b9406a4b3bec8264ac9b4517447b1974cc6de139bb9e2a889b82dbb9081",
+    "tag": "task-bundle/openlibrary-ebooks:663eeec43f4ce800"
+  },
+  "model": null,
+  "repo": {
+    "commit": "8d41b319745228044947e039f629c44a5da08a09",
+    "url": "https://github.com/internetarchive/openlibrary"
+  },
+  "run_id": "run_1a093550d8d-f83a0beb",
+  "schema_version": 1,
+  "solver": "stub",
+  "started_at": "2026-09-12T01:56:59+00:00",
+  "stats": {
+    "cost_usd": null,
+    "input_tokens": null,
+    "output_tokens": null
+  },
+  "task_id": "openlibrary-ebooks",
+  "tests": [
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParse::test_read_author_person"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[13dipolarcycload00burk_meta.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[880_Nihon_no_chasho.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[880_alternate_script.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[880_arabic_french_many_linkages.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[880_publisher_unlinked.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[880_table_of_contents.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[bijouorannualofl1828cole_meta.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[bpl_0486266893.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[collingswood_520aa.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[collingswood_bad_008.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[cu31924091184469_meta.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[diebrokeradical400poll_meta.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[engineercorpsofh00sher_meta.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[equalsign_title.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[flatlandromanceo00abbouoft_meta.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[henrywardbeecher00robauoft_meta.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[histoirereligieu05cr_meta.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[ithaca_college_75002321.mrc]"
+    },
+    {
+      "baseline_status": "failed",
+      "bucket": "fail2pass",
+      "post_solver_status": "failed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[ithaca_two_856u.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[lc_0444897283.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[lc_1416500308.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[memoirsofjosephf00fouc_meta.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[merchantsfromcat00ben_meta.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[ocm00400866.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[onquietcomedyint00brid_meta.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[secretcodeofsucc00stjo_meta.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[talis_245p.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[talis_740.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[talis_856.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[talis_empty_245.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[talis_multi_work_tiles.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[talis_no_title.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[talis_two_authors.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[thewilliamsrecord_vol29b_meta.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[uoft_4351105_1626.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[upei_broken_008.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[upei_short_008.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[warofrebellionco1473unit_meta.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[wrapped_lines.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[wwu_51323556.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_binary[zweibchersatir01horauoft_meta.mrc]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_raises_no_title"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCBinary::test_raises_see_also"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCXML::test_xml[00schlgoog]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCXML::test_xml[0descriptionofta1682unit]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCXML::test_xml[13dipolarcycload00burk]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCXML::test_xml[1733mmoiresdel00vill]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCXML::test_xml[39002054008678.yale.edu]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCXML::test_xml[bijouorannualofl1828cole]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCXML::test_xml[cu31924091184469]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCXML::test_xml[engineercorpsofh00sher]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCXML::test_xml[flatlandromanceo00abbouoft]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCXML::test_xml[nybc200247]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCXML::test_xml[onquietcomedyint00brid]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCXML::test_xml[secretcodeofsucc00stjo]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCXML::test_xml[soilsurveyrepor00statgoog]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCXML::test_xml[warofrebellionco1473unit]"
+    },
+    {
+      "baseline_status": "passed",
+      "bucket": "pass2pass",
+      "post_solver_status": "passed",
+      "test": "openlibrary/catalog/marc/tests/test_parse.py::TestParseMARCXML::test_xml[zweibchersatir01horauoft]"
+    }
+  ],
+  "tool_versions": {
+    "docker": "29.5.2",
+    "git": "git version 2.55.0",
+    "python": "3.13.15",
+    "task_bundle": "0.1.0"
+  },
+  "verdict": "UNRESOLVED"
+}

@@ -1,0 +1,17 @@
+github.com/aquasecurity/trivy/pkg/version/app: /usr/local/go/pkg/tool/linux_amd64/vet: signal: segmentation fault (core dumped)
+FAIL	github.com/future-architect/vuls/detector/vuls2 [build failed]
+FAIL
+exit=0
+--- attempt 1 done
+github.com/google/s2a-go/internal/proto/v2/common_go_proto: /usr/local/go/pkg/tool/linux_amd64/vet: signal: segmentation fault (core dumped)
+FAIL	github.com/future-architect/vuls/detector/vuls2 [build failed]
+FAIL
+exit=0
+--- attempt 2 done
+internal/runtime/exithook: /usr/local/go/pkg/tool/linux_amd64/compile: signal: segmentation fault (core dumped)
+FAIL	github.com/future-architect/vuls/detector/vuls2 [build failed]
+FAIL
+exit=0
+--- attempt 3 done
+
+[exited with code 0]

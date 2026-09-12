@@ -1,0 +1,75 @@
+=== ^Test_shouldDownload$ [fail2pass] baseline: failed ===
+FAIL	github.com/future-architect/vuls/detector/vuls2 [build failed]
+FAIL
+internal/bytealg: /usr/local/go/pkg/tool/linux_amd64/asm: signal: segmentation fault
+
+=== ^Test_shouldDownload$/^schema_version_mismatch$ [fail2pass] baseline: failed ===
+FAIL	github.com/future-architect/vuls/detector/vuls2 [build failed]
+FAIL
+runtime/cgo: gcc: signal: segmentation fault
+google.golang.org/genproto/googleapis/api/expr/v1alpha1: /usr/local/go/pkg/tool/linux_amd64/compile: signal: segmentation fault (core dumped)
+github.com/aws/aws-sdk-go/aws/endpoints: /usr/local/go/pkg/tool/linux_amd64/compile: signal: segmentation fault (core dumped)
+golang.org/x/crypto/ssh/terminal: /usr/local/go/pkg/tool/linux_amd64/compile: signal: segmentation fault (core dumped)
+
+=== ^Test_shouldDownload$/^schema_version_mismatch,_but_skip_update$ [fail2pass] baseline: failed ===
+FAIL	github.com/future-architect/vuls/detector/vuls2 [build failed]
+FAIL
+google.golang.org/grpc/balancer/pickfirst: /usr/local/go/pkg/tool/linux_amd64/compile: signal: segmentation fault (core dumped)
+github.com/stretchr/testify/mock: /usr/local/go/pkg/tool/linux_amd64/compile: signal: segmentation fault (core dumped)
+google.golang.org/api/googleapi/transport: /usr/local/go/pkg/tool/linux_amd64/vet: signal: segmentation fault
+google.golang.org/grpc/xds/internal/httpfilter/fault: /usr/local/go/pkg/tool/linux_amd64/vet: signal: segmentation fault
+github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream/eventstreamapi: /usr/local/go/pkg/tool/linux_amd64/vet: signal: segmentation fault
+
+=== ^Test_shouldDownload$/^no_db_file$ [pass2pass] baseline: failed ===
+FAIL	github.com/future-architect/vuls/detector/vuls2 [build failed]
+FAIL
+go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc: /usr/local/go/pkg/tool/linux_amd64/compile: signal: segmentation fault (core dumped)
+
+=== ^Test_shouldDownload$/^no_db_file,_but_skip_update$ [pass2pass] baseline: failed ===
+FAIL	github.com/future-architect/vuls/detector/vuls2 [build failed]
+FAIL
+github.com/future-architect/vuls/models: /usr/local/go/pkg/tool/linux_amd64/compile: signal: segmentation fault (core dumped)
+
+=== ^Test_shouldDownload$/^just_created$ [pass2pass] baseline: passed ===
+ok  	github.com/future-architect/vuls/detector/vuls2	0.271s
+
+=== ^Test_shouldDownload$/^8_hours_old$ [pass2pass] baseline: passed ===
+ok  	github.com/future-architect/vuls/detector/vuls2	0.271s
+
+=== ^Test_shouldDownload$/^8_hours_old,_but_skip_update$ [pass2pass] baseline: passed ===
+ok  	github.com/future-architect/vuls/detector/vuls2	0.434s
+
+=== ^Test_shouldDownload$/^8_hours_old,_but_download_recently$ [pass2pass] baseline: passed ===
+ok  	github.com/future-architect/vuls/detector/vuls2	0.398s
+
+=== ^Test_shouldDownload$ [fail2pass] post_gold: failed ===
+FAIL	github.com/future-architect/vuls/detector/vuls2 [build failed]
+FAIL
+internal/goexperiment: /usr/local/go/pkg/tool/linux_amd64/compile: signal: segmentation fault (core dumped)
+vendor/golang.org/x/crypto/cryptobyte/asn1: /usr/local/go/pkg/tool/linux_amd64/compile: signal: segmentation fault (core dumped)
+github.com/google/go-containerregistry/pkg/compression: /usr/local/go/pkg/tool/linux_amd64/vet: signal: segmentation fault
+
+=== ^Test_shouldDownload$/^schema_version_mismatch$ [fail2pass] post_gold: timeout ===
+(timed out after 600s)
+=== ^Test_shouldDownload$/^schema_version_mismatch,_but_skip_update$ [fail2pass] post_gold: failed ===
+ok  	github.com/future-architect/vuls/detector/vuls2	0.303s
+FAIL
+github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/local: /usr/local/go/pkg/tool/linux_amd64/vet: signal: segmentation fault
+
+=== ^Test_shouldDownload$/^no_db_file$ [pass2pass] post_gold: passed ===
+ok  	github.com/future-architect/vuls/detector/vuls2	0.242s
+
+=== ^Test_shouldDownload$/^no_db_file,_but_skip_update$ [pass2pass] post_gold: passed ===
+ok  	github.com/future-architect/vuls/detector/vuls2	0.254s
+
+=== ^Test_shouldDownload$/^just_created$ [pass2pass] post_gold: passed ===
+ok  	github.com/future-architect/vuls/detector/vuls2	0.259s
+
+=== ^Test_shouldDownload$/^8_hours_old$ [pass2pass] post_gold: passed ===
+ok  	github.com/future-architect/vuls/detector/vuls2	0.257s
+
+=== ^Test_shouldDownload$/^8_hours_old,_but_skip_update$ [pass2pass] post_gold: passed ===
+ok  	github.com/future-architect/vuls/detector/vuls2	0.251s
+
+=== ^Test_shouldDownload$/^8_hours_old,_but_download_recently$ [pass2pass] post_gold: passed ===
+ok  	github.com/future-architect/vuls/detector/vuls2	0.258s
