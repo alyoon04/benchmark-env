@@ -243,10 +243,17 @@ class TestUnitBehavior:
     def test_safe_path_confines_to_repo_dir(self) -> None:
         assert _safe_path("calc.py", "/workspace") == "/workspace/calc.py"
         assert _safe_path("./tests/x.py", "/workspace") == "/workspace/tests/x.py"
-        # absolute paths are treated as repo-rooted
+        # absolute paths under the repo dir are accepted as-is (models echo what
+        # they saw in shell output); other absolute paths are treated as repo-rooted
+        assert _safe_path("/app/calc.py", "/app") == "/app/calc.py"
+        assert _safe_path("/app/lib/ansible/vars/manager.py", "/app") == (
+            "/app/lib/ansible/vars/manager.py"
+        )
+        assert _safe_path("/app", "/app") == "/app"
         assert _safe_path("/calc.py", "/workspace") == "/workspace/calc.py"
-        assert _safe_path("/app/calc.py", "/app") == "/app/app/calc.py"
+        assert _safe_path("/application/x.py", "/app") == "/app/application/x.py"
         assert _safe_path("calc.py", "/app") == "/app/calc.py"
+        assert _safe_path("/app/../etc/passwd", "/app") == "/app/etc/passwd"
         for escape in ("../../etc/passwd", "a/../../etc", ".."):
             with pytest.raises(ValueError, match="escapes"):
                 _safe_path(escape, "/workspace")

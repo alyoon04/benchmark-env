@@ -1195,8 +1195,14 @@ def runs_show(run_id: Annotated[str, typer.Argument(help="Run id to inspect.")])
         for key in ("task_id", "solver", "model", "verdict", "started_at", "finished_at"):
             console.print(f"  {key}: {row[key] or '-'}")
         if row["cost_usd"] is not None:
+            cached = ""
+            if row["cache_read_tokens"] is not None or row["cache_write_tokens"] is not None:
+                cached = (
+                    f" + {row['cache_read_tokens'] or 0} cached in"
+                    f" ({row['cache_write_tokens'] or 0} written to cache)"
+                )
             console.print(
-                f"  tokens: {row['input_tokens']} in / {row['output_tokens']} out "
+                f"  tokens: {row['input_tokens']} in{cached} / {row['output_tokens']} out "
                 f"(${row['cost_usd']:.4f})"
             )
         console.print(f"  image: {row['image_tag']} ({row['image_digest']})")

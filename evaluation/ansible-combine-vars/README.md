@@ -23,4 +23,21 @@ End-to-end run of the full pipeline against a public SWE-bench Pro instance:
   `__ior__` to `VarsWithSources` — a *different* valid implementation than the gold
   patch, so it is a genuine solve, not memorization. Proves the agentic loop
   (in-container tools, host-side diff capture, two-phase grading, cost accounting).
+- `run-claude-opus5.report.json` + `.trajectory.jsonl` — the same instance on the
+  **rewritten agent loop** (claude-opus-5, effort high): **RESOLVED in 7 iterations
+  for $0.18**. Prompt caching served 42.0K of 51.4K input tokens from cache (14
+  uncached); the fix was made with one `edit_file` call and verified with the repo's
+  visible tests before finishing. Same class of fix as before, plus a changelog
+  fragment. The trajectory is the structured per-step record (tool inputs, exact
+  outputs the model saw, per-turn usage).
+
+| Agent loop | Model | Iterations | Input tokens (uncached / cached) | Output | Cost |
+|---|---|---|---|---|---|
+| original (whole-file writes, no caching) | claude-opus-4-7 | — | 461.7K / 0 | 2.5K | $2.37 |
+| rewritten (edit tool, search, caching, effort) | claude-opus-5 | 7 | 14 / 42.0K read + 9.5K written | 4.1K | **$0.18** |
+
+Same verdict, ~13× cheaper. One wart visible in the trajectory: the model passed an
+absolute `/app/...` path to `edit_file`, which the path guard mis-rooted; it recovered
+on the next turn. Fixed in the solver afterwards (absolute paths under the repo dir are
+now accepted as-is).
 
