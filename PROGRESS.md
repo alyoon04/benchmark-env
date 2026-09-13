@@ -71,6 +71,11 @@
 | Changeset ignores follow `git check-ignore` on the host clone (tracked files never ignored) plus `__pycache__/`, `*.pyc`, `*.pyo`, `.pytest_cache/` | Same semantics as the previous `git add -A` snapshot without needing a repo in the tree; the model's own `run_command` test runs leave bytecode behind that is not a change |
 | Changed files leave the container via one `tar` stream per 500 paths (`Docker.archive`), not one `docker cp` per file | Seconds instead of minutes when a solver touches thousands of files |
 | Go imports: test command scoped to the packages the test patch touches, ids anchored per level (`^Top$/^sub$`), `GOCACHE=/tmp/task-bundle-go-build` | `-run` is an unanchored per-level regex (`Test_x/case` also matches `case_extra`); `./...` compiled the whole module per id; the default `$HOME/.cache` had been pre-created root-owned by orchestrator execs |
+| ClaudeSolver: default `claude-opus-5`, adaptive thinking + `--effort` (sent only to models that take it), top-level `cache_control` prompt caching, cache reads/writes priced separately (0.1x / 1.25x input) | The one recorded live solve re-sent ~460K input tokens for 2.5K output; caching turns most of that into cache reads. Effort is the primary cost/quality lever on current models |
+| ClaudeSolver tools: `search` (grep -rnE) and `edit_file` (exact single match; refuses 0 or >1 matches; `is_error` tool results) added; whole-file `write_file` kept for new files | Exploration by grep and targeted edits are what competitive coding agents do; whole-file rewrites lose unrelated content and burn output tokens |
+| API errors after the SDK's retries, refusals, `max_tokens` truncation and a context budget end the solve gracefully (recorded as `stop_reason`); the edits so far are graded | On a fleet, a crashed run is a lost sample; a run that stopped early with a reason is data |
+| Structured `trajectory.jsonl` artifact (start/assistant/tool_result/error/end events, exact tool I/O, per-step usage) alongside `transcript.txt`; `stop_reason` + cache stats + solver config in `report.json` | Failure taxonomies, ablations and SFT/RL exports need the exact model-visible I/O, not a summary; the DB schema is unchanged (cost already reflects caching) |
+| `--effort` is part of the fleet job identity | Two sweeps at different effort are different experiments; resume must not conflate them |
 
 ## Current state
 
@@ -90,8 +95,12 @@ of that grading path. Ruff + mypy --strict are clean.
 
 ## Possible follow-ups (out of original scope)
 
-- Live ClaudeSolver hand-test against a real SWE-bench Pro instance (only stub
-  proven end-to-end on the real instance so far).
+- Live ClaudeSolver run on real instances with the rewritten loop (caching, effort,
+  edit_file); the previous live solve predates it. No credentials were available in the
+  session that made the change, so it is verified with a scripted client + Docker only.
+- A second provider backend (OpenAI-compatible endpoint for open-weight models) behind
+  the same `Solver` protocol and trajectory format.
+- Server-side context editing (`clear_tool_uses`) instead of the hard context budget.
 - Non-editable-install `import-swebench` support via an optional per-language reinstall
   step (in-place grading now handles editable installs, submodules, `node_modules` and
   compiled extensions; a non-editable install is still detected loudly by the auto

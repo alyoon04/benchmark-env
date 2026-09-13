@@ -89,6 +89,11 @@ def execute_recorded_run(
             ),
         ),
     }
+    if outcome.solve.trajectory:
+        artifacts["solver_trajectory"] = (
+            "trajectory.jsonl",
+            "".join(json.dumps(event, sort_keys=True) + "\n" for event in outcome.solve.trajectory),
+        )
     for type_, (filename, content) in artifacts.items():
         path = artifact_dir / filename
         path.write_text(content)

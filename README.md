@@ -134,12 +134,26 @@ extensions — are present at grade time exactly as the image shipped them. No `
   `--gold`), or no-ops. Deterministic; used to prove the harness: gold ⇒ RESOLVED,
   no-op ⇒ UNRESOLVED.
 - **claude** — an agentic loop over the Claude API (`--model`, default
-  `claude-opus-4-7` or `$ANTHROPIC_MODEL`; requires `ANTHROPIC_API_KEY`). The model
-  gets list_dir/read_file/write_file/run_command tools, all executed **inside the
-  hardened solve container** (network off, non-root) — solver-controlled code never
-  runs on the host, and only the files it changed ever leave the container. Budgets:
-  `--max-iterations` (default 30), 30-minute wall clock, bounded tool output. Tokens
-  and estimated cost land in the run stats.
+  `claude-opus-5` or `$ANTHROPIC_MODEL`; needs `ANTHROPIC_API_KEY` or an `ant auth
+  login` profile). The model gets `list_dir` / `read_file` / `search` (grep) /
+  `edit_file` (exact-match replace, refuses ambiguous matches) / `write_file` /
+  `run_command`, all executed **inside the hardened solve container** (network off,
+  non-root) — solver-controlled code never runs on the host, and only the files it
+  changed ever leave the container.
+  - **Cost:** the request is rendered for prompt caching (frozen tools + system prompt,
+    top-level `cache_control`), so each turn re-reads the conversation prefix at cache
+    rates; cache reads/writes are priced separately in the run stats. `--effort`
+    (`low|medium|high|xhigh|max`, default `high`) sets adaptive-thinking depth — the
+    main cost/quality lever for agentic runs.
+  - **Budgets:** `--max-iterations` (default 30), 30-minute wall clock, a 400K-token
+    context budget, bounded tool output.
+  - **Robustness:** API errors that survive the SDK's retries, refusals, and output
+    truncation end the solve gracefully and grade whatever was edited; the reason is
+    recorded as the run's `stop_reason`.
+  - **Trajectories:** every step is written to `trajectory.jsonl` — exact tool inputs,
+    the exact outputs the model saw, per-step usage and stop reasons — alongside the
+    human-readable `transcript.txt`, so runs can be analyzed or turned into training
+    data without re-running anything.
 
 ## Fleet execution
 
@@ -191,7 +205,7 @@ gets a fresh container so runs cannot contaminate each other.
 | `task validate <bundle> [--attempts N] [--rebuild]` | ✅ | Baseline contract: pass2pass all pass, fail2pass all fail; each suite runs 3× in fresh containers and flaky tests are flagged. Exit 2 with specific reasons on violation. |
 | `task logs [<command-id>]` | ✅ | No argument: list recent commands. With an id: show argv, exit code, per-test results, artifacts, and the command log. |
 | `task runs list` / `task runs show <run-id>` | ✅ | Query solver runs (populated by `task run`). |
-| `task run <bundle> [--solver stub\|claude] [--patch FILE \| --gold] [--model M] [--max-iterations N] [--rebuild]` | ✅ | Baseline → solve in place → replay changeset → grade, in separate containers; before/after table, changed/added/deleted counts, RESOLVED/UNRESOLVED verdict, sorted-key `report.json` + `solver.diff`/transcript artifacts, run + token/cost stats recorded in DB. `claude` solver needs `ANTHROPIC_API_KEY`. |
+| `task run <bundle> [--solver stub\|claude] [--patch FILE \| --gold] [--model M] [--effort E] [--max-iterations N] [--rebuild]` | ✅ | Baseline → solve in place → replay changeset → grade, in separate containers; before/after table, changed/added/deleted counts, RESOLVED/UNRESOLVED verdict, sorted-key `report.json` + `solver.diff`/`transcript.txt`/`trajectory.jsonl` artifacts, run + token/cache/cost stats recorded in DB. `claude` solver needs Anthropic credentials. |
 | `task fleet <bundle>... [--samples K] [--concurrency N] [--container-limit N] [--backend local\|kubernetes]` | ✅ | Concurrent, disk-aware, resumable multi-task/multi-sample execution with content-derived run ids, pass@k, and a JSON fleet summary. |
 | `task import-swebench <instance-id> [--dest DIR] [--test-command TPL] [--timeout N] [--no-init] [--no-verify]` | ✅ | Convert a public SWE-bench Pro instance (ScaleAI/SWE-bench_Pro on HuggingFace) into a ready-to-validate bundle: prebuilt instance image as base, hidden tests as test patch + explicit f2p/p2p ids, gold patch saved as `patch.diff`. The repo path is discovered from the image (no `/app` hardcode) and used in place, so submodules/`node_modules`/caches under it survive; Go instances get scoped packages, anchored `-run` patterns, and a writable `GOCACHE`. After `--init` it auto-runs `verify-gold` so a non-gradeable instance fails loudly at import. See `evaluation/` for real end-to-end runs. |
 | `task verify-gold <bundle> [--rebuild]` | ✅ | Prove solvability: apply `patch.diff` via a deterministic stub solver and confirm every fail2pass test flips to pass and every pass2pass holds. Exit 2 (naming each offending test) if the golden patch doesn't cleanly resolve the task. Records no run — it's an authoring check. |
