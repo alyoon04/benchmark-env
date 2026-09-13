@@ -1118,9 +1118,15 @@ def _check_git() -> tuple[str, str, str]:
 
 
 def _check_api_key() -> tuple[str, str, str]:
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return ("ANTHROPIC_API_KEY", "ok", "set")
-    return ("ANTHROPIC_API_KEY", "warn", "unset — needed only for `task run --solver claude`")
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return ("ANTHROPIC_API_KEY", "warn", "unset — needed only for `task run --solver claude`")
+    if os.environ.get("ANTHROPIC_WORKSPACE_ID"):
+        return ("ANTHROPIC_API_KEY", "ok", "set (workspace header from ANTHROPIC_WORKSPACE_ID)")
+    return (
+        "ANTHROPIC_API_KEY",
+        "ok",
+        "set — if the API answers 'not scoped to a workspace', export ANTHROPIC_WORKSPACE_ID",
+    )
 
 
 def _check_disk() -> tuple[str, str, str]:

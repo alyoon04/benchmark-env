@@ -198,6 +198,21 @@ def _credential_profile_dir() -> Path:
     return Path.home() / ".config" / "anthropic"
 
 
+def client_kwargs() -> dict[str, Any]:
+    """Constructor arguments for the SDK client, from the environment.
+
+    An organization-level API key (one not created inside a workspace) is rejected
+    by the API unless every request names a workspace via the
+    ``anthropic-workspace-id`` header; ``ANTHROPIC_WORKSPACE_ID`` supplies it.
+    Workspace-scoped keys need nothing extra.
+    """
+    kwargs: dict[str, Any] = {"max_retries": API_MAX_RETRIES}
+    workspace = os.environ.get("ANTHROPIC_WORKSPACE_ID")
+    if workspace:
+        kwargs["default_headers"] = {"anthropic-workspace-id": workspace}
+    return kwargs
+
+
 class ClaudeSolver:
     """Agentic solver over the Claude API with hard iteration/time/context budgets."""
 
@@ -242,7 +257,7 @@ class ClaudeSolver:
                 "login`) to use --solver claude, or use --solver stub for deterministic runs."
             )
         # The SDK retries 429s, 5xx and connection errors with backoff on its own.
-        return cast(MessagesClient, anthropic.Anthropic(max_retries=API_MAX_RETRIES).messages)
+        return cast(MessagesClient, anthropic.Anthropic(**client_kwargs()).messages)
 
     def request_kwargs(self, repo_dir: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
         """The Messages API call, rendered for prompt-cache stability.

@@ -135,7 +135,8 @@ extensions — are present at grade time exactly as the image shipped them. No `
   no-op ⇒ UNRESOLVED.
 - **claude** — an agentic loop over the Claude API (`--model`, default
   `claude-opus-5` or `$ANTHROPIC_MODEL`; needs `ANTHROPIC_API_KEY` or an `ant auth
-  login` profile). The model gets `list_dir` / `read_file` / `search` (grep) /
+  login` profile — an organization-level key additionally needs
+  `ANTHROPIC_WORKSPACE_ID`, sent as the `anthropic-workspace-id` header). The model gets `list_dir` / `read_file` / `search` (grep) /
   `edit_file` (exact-match replace, refuses ambiguous matches) / `write_file` /
   `run_command`, all executed **inside the hardened solve container** (network off,
   non-root) — solver-controlled code never runs on the host, and only the files it

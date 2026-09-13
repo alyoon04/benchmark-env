@@ -416,3 +416,32 @@ def test_scripted_edit_and_search_tools(
     ).read_text()
     assert "-    return a * b\n+    return a / b" in diff
     assert diff.count("diff --git") == 1  # exactly one file touched, nothing else
+
+
+class TestClientKwargs:
+    """Organization-level keys need the workspace header on every request."""
+
+    def test_workspace_header_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from task_bundle.solver.claude import client_kwargs
+
+        monkeypatch.setenv("ANTHROPIC_WORKSPACE_ID", "wrkspc_123")
+        kwargs = client_kwargs()
+        assert kwargs["default_headers"] == {"anthropic-workspace-id": "wrkspc_123"}
+        assert kwargs["max_retries"] >= 1
+
+    def test_no_header_without_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from task_bundle.solver.claude import client_kwargs
+
+        monkeypatch.delenv("ANTHROPIC_WORKSPACE_ID", raising=False)
+        assert "default_headers" not in client_kwargs()
+
+
+class TestDoctorApiKeyHint:
+    def test_points_at_workspace_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from task_bundle.cli import _check_api_key
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.delenv("ANTHROPIC_WORKSPACE_ID", raising=False)
+        assert "ANTHROPIC_WORKSPACE_ID" in _check_api_key()[2]
+        monkeypatch.setenv("ANTHROPIC_WORKSPACE_ID", "wrkspc_123")
+        assert "workspace header" in _check_api_key()[2]
