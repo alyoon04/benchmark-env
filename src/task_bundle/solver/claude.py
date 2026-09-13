@@ -178,8 +178,18 @@ class MessagesClient(Protocol):
 
 
 def _safe_path(path: str, repo_dir: str) -> str:
-    """Resolve a model-supplied path to a container path inside ``repo_dir``."""
-    norm = posixpath.normpath(posixpath.join(repo_dir, path.lstrip("/")))
+    """Resolve a model-supplied path to a container path inside ``repo_dir``.
+
+    Relative paths are repo-rooted. An absolute path that already lies under the
+    repo dir is accepted as-is (models frequently echo the absolute path they saw
+    in ``run_command`` output); any other absolute path is treated as repo-rooted.
+    Anything that normalizes to outside the repo dir is rejected.
+    """
+    candidate = posixpath.normpath(path)
+    if candidate == repo_dir or candidate.startswith(repo_dir + "/"):
+        norm = candidate
+    else:
+        norm = posixpath.normpath(posixpath.join(repo_dir, path.lstrip("/")))
     if norm != repo_dir and not norm.startswith(repo_dir + "/"):
         raise ValueError(f"path {path!r} escapes the repository root")
     return norm

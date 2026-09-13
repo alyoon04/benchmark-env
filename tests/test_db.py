@@ -158,3 +158,39 @@ class TestCommandRecording:
         result = runner.invoke(app, ["runs", "list"])
         assert result.exit_code == 0
         assert "No runs" in result.output
+
+
+class TestMigration:
+    def test_cache_columns_added_to_existing_database(self, tmp_path: Path) -> None:
+        """A DB created before cache accounting gains the columns on next open."""
+        import sqlite3
+
+        path = tmp_path / "old.db"
+        conn = sqlite3.connect(path)
+        conn.executescript(
+            "CREATE TABLE commands (id TEXT PRIMARY KEY, name TEXT NOT NULL, argv TEXT NOT NULL,"
+            " bundle_path TEXT, started_at TEXT NOT NULL, finished_at TEXT, exit_code INTEGER,"
+            " log_path TEXT);"
+            "CREATE TABLE runs (id TEXT PRIMARY KEY, command_id TEXT NOT NULL, task_id TEXT"
+            " NOT NULL, solver TEXT NOT NULL, model TEXT, verdict TEXT, started_at TEXT NOT"
+            " NULL, finished_at TEXT, input_tokens INTEGER, output_tokens INTEGER, cost_usd"
+            " REAL, image_tag TEXT, image_digest TEXT, tool_versions TEXT);"
+        )
+        conn.commit()
+        conn.close()
+
+        db = Database(path)
+        cid = new_id("cmd")
+        db.insert_command(cid, "run", "[]", None, "2026-01-01T00:00:00+00:00", "/log")
+        db.insert_run(
+            "run_x", cid, "t", "claude", "m", "2026-01-01T00:00:00+00:00", None, None, "{}"
+        )
+        db.finish_run(
+            "run_x", "RESOLVED", "2026-01-01T00:01:00+00:00", 10, 20, 0.5,
+            cache_read_tokens=4000, cache_write_tokens=900,
+        )  # fmt: skip
+        row = db.get_run("run_x")
+        assert row is not None
+        assert (row["cache_read_tokens"], row["cache_write_tokens"]) == (4000, 900)
+        db.close()
+        Database(path).close()  # idempotent on reopen

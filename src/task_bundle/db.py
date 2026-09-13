@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS runs (
   finished_at   TEXT,
   input_tokens  INTEGER,
   output_tokens INTEGER,
+  cache_read_tokens  INTEGER,
+  cache_write_tokens INTEGER,
   cost_usd      REAL,
   image_tag     TEXT,
   image_digest  TEXT,
@@ -119,6 +121,21 @@ class Database:
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
         self._conn.execute("PRAGMA busy_timeout = 30000")
+        self._migrate()
+
+    # Columns added after a table first shipped; CREATE TABLE IF NOT EXISTS leaves an
+    # existing database untouched, so they are added here when missing.
+    _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+        ("runs", "cache_read_tokens", "INTEGER"),
+        ("runs", "cache_write_tokens", "INTEGER"),
+    )
+
+    def _migrate(self) -> None:
+        for table, column, type_ in self._ADDED_COLUMNS:
+            present = {r["name"] for r in self._conn.execute(f"PRAGMA table_info({table})")}
+            if column not in present:
+                self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {type_}")
+        self._conn.commit()
 
     def close(self) -> None:
         self._conn.close()
@@ -211,6 +228,7 @@ class Database:
                 " task_id=excluded.task_id, solver=excluded.solver, model=excluded.model,"
                 " verdict=NULL, started_at=excluded.started_at, finished_at=NULL,"
                 " input_tokens=NULL, output_tokens=NULL, cost_usd=NULL,"
+                " cache_read_tokens=NULL, cache_write_tokens=NULL,"
                 " image_tag=excluded.image_tag, image_digest=excluded.image_digest,"
                 " tool_versions=excluded.tool_versions",
                 (
@@ -234,11 +252,23 @@ class Database:
         input_tokens: int | None = None,
         output_tokens: int | None = None,
         cost_usd: float | None = None,
+        cache_read_tokens: int | None = None,
+        cache_write_tokens: int | None = None,
     ) -> None:
         self._conn.execute(
             "UPDATE runs SET verdict = ?, finished_at = ?, input_tokens = ?,"
-            " output_tokens = ?, cost_usd = ? WHERE id = ?",
-            (verdict, finished_at, input_tokens, output_tokens, cost_usd, run_id),
+            " output_tokens = ?, cost_usd = ?, cache_read_tokens = ?, cache_write_tokens = ?"
+            " WHERE id = ?",
+            (
+                verdict,
+                finished_at,
+                input_tokens,
+                output_tokens,
+                cost_usd,
+                cache_read_tokens,
+                cache_write_tokens,
+                run_id,
+            ),
         )
         self._conn.commit()
 

@@ -72,6 +72,8 @@ def execute_recorded_run(
         outcome.solve.input_tokens,
         outcome.solve.output_tokens,
         outcome.solve.cost_usd,
+        cache_read_tokens=outcome.solve.cache_read_tokens,
+        cache_write_tokens=outcome.solve.cache_write_tokens,
     )
 
     artifacts = {

@@ -11,8 +11,11 @@ isolation — with every command logged to a queryable SQLite database.
 > `import-swebench`, `diff`, `logs` / `runs`, `doctor`, and `clean` — is implemented,
 > tested, and documented.
 >
-> **Validated scope:** the full flow (incl. a live Claude solve → RESOLVED) is proven
-> end-to-end on real SWE-bench Pro instances — see [`evaluation/`](evaluation/).
+> **Validated scope:** the full flow (incl. live Claude solves → RESOLVED) is proven
+> end-to-end on real SWE-bench Pro instances — see [`evaluation/`](evaluation/). On
+> the ansible instance the rewritten agent loop (claude-opus-5, edit tool, prompt
+> caching) resolves the task in 7 iterations for **$0.18**, versus $2.37 for the
+> original loop — same verdict, ~13× cheaper.
 > Grading works **in place** on the image's own repo tree, so instances whose
 > dependencies live under the repo dir outside git (submodule checkouts, `node_modules`,
 > compiled extensions) grade correctly; the cross-language sweep in
