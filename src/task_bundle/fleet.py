@@ -29,6 +29,7 @@ class FleetJob:
     image_tag: str
     patch: Path | None = None
     gold: bool = False
+    effort: str | None = None
 
 
 @dataclass(frozen=True)
@@ -162,6 +163,7 @@ def stable_job(
     image_tag: str,
     patch: Path | None = None,
     gold: bool = False,
+    effort: str | None = None,
 ) -> FleetJob:
     """Build an idempotent job keyed by instance, model, solver config, and sample."""
     patch_digest = None
@@ -176,6 +178,7 @@ def stable_job(
         "image_tag": image_tag,
         "patch_sha256": patch_digest,
         "gold": gold,
+        "effort": effort,
     }
     config_digest = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
@@ -194,6 +197,7 @@ def stable_job(
         image_tag=image_tag,
         patch=patch.resolve() if patch is not None else None,
         gold=gold,
+        effort=effort,
     )
 
 

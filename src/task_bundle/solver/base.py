@@ -9,7 +9,7 @@ themselves — they just edit files.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from task_bundle.container import Docker
 
@@ -42,7 +42,12 @@ class SolveResult:
     transcript: str = ""
     input_tokens: int | None = None
     output_tokens: int | None = None
+    cache_read_tokens: int | None = None
+    cache_write_tokens: int | None = None
     cost_usd: float | None = None
+    stop_reason: str | None = None
+    trajectory: list[dict[str, Any]] = field(default_factory=list)
+    """Structured per-step record (one dict per event); persisted as JSONL."""
     extra: dict[str, str] = field(default_factory=dict)
 
 

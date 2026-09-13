@@ -72,7 +72,11 @@ def build_report(
         "stats": {
             "input_tokens": outcome.solve.input_tokens,
             "output_tokens": outcome.solve.output_tokens,
+            "cache_read_tokens": outcome.solve.cache_read_tokens,
+            "cache_write_tokens": outcome.solve.cache_write_tokens,
             "cost_usd": outcome.solve.cost_usd,
+            "stop_reason": outcome.solve.stop_reason,
+            "solver_config": dict(sorted(outcome.solve.extra.items())),
         },
     }
 

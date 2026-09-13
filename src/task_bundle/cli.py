@@ -343,12 +343,13 @@ def _make_solver(
     gold: bool,
     model: str | None,
     max_iterations: int,
+    effort: str | None = None,
 ) -> Solver:
-    """Resolve --solver/--patch/--gold/--model flags into a Solver instance."""
+    """Resolve --solver/--patch/--gold/--model/--effort flags into a Solver instance."""
     if name == "claude":
         if patch or gold:
             raise TaskError("--patch/--gold only apply to the stub solver.")
-        return ClaudeSolver(model=model, max_iterations=max_iterations)
+        return ClaudeSolver(model=model, max_iterations=max_iterations, effort=effort)
     if name != "stub":
         raise TaskError(f"Unknown solver {name!r}. Available: stub, claude.")
     if patch and gold:
@@ -373,11 +374,19 @@ def run(
     ] = "stub",
     model: Annotated[
         str | None,
-        typer.Option(help="Model for the claude solver (default: $ANTHROPIC_MODEL or opus)."),
+        typer.Option(
+            help="Model for the claude solver (default: $ANTHROPIC_MODEL or claude-opus-5)."
+        ),
     ] = None,
     max_iterations: Annotated[
         int, typer.Option(help="Iteration cap for the claude solver's agent loop.")
     ] = 30,
+    effort: Annotated[
+        str | None,
+        typer.Option(
+            help="Claude effort level (low|medium|high|xhigh|max); the main cost/quality lever."
+        ),
+    ] = None,
     patch: Annotated[
         Path | None, typer.Option(help="Patch the stub solver applies to the workspace.")
     ] = None,
@@ -397,7 +406,7 @@ def run(
     with record_command("run", bundle_path) as rec:
         bundle = Bundle.load(bundle_path)
         bundle.test_format()
-        solver_obj = _make_solver(solver, bundle, patch, gold, model, max_iterations)
+        solver_obj = _make_solver(solver, bundle, patch, gold, model, max_iterations, effort)
         docker = Docker()
         docker.ensure_available()
         with console.status("Ensuring task image..."):
@@ -463,6 +472,12 @@ def fleet(
     ] = "stub",
     model: Annotated[str | None, typer.Option(help="Model for the claude solver.")] = None,
     max_iterations: Annotated[int, typer.Option(help="Iteration cap per solver sample.")] = 30,
+    effort: Annotated[
+        str | None,
+        typer.Option(
+            help="Claude effort level (low|medium|high|xhigh|max); the main cost/quality lever."
+        ),
+    ] = None,
     samples: Annotated[
         int, typer.Option("--samples", "-k", help="Independent samples per task.", min=1)
     ] = 1,
@@ -554,7 +569,7 @@ def fleet(
             job_patch = bundle.gold_patch_path if gold else patch
             # Validate solver options and resolve the provider's effective model now,
             # so a changed environment default creates a new idempotency key.
-            probe = _make_solver(solver, bundle, job_patch, False, model, max_iterations)
+            probe = _make_solver(solver, bundle, job_patch, False, model, max_iterations, effort)
             for sample in range(1, samples + 1):
                 jobs.append(
                     stable_job(
@@ -567,6 +582,7 @@ def fleet(
                         sample=sample,
                         image_tag=image_tags[bundle.path],
                         patch=job_patch,
+                        effort=effort if solver == "claude" else None,
                     )
                 )
 
@@ -638,6 +654,7 @@ def fleet(
                     False,
                     job.model,
                     job.max_iterations,
+                    job.effort,
                 )
                 runtime: Docker
                 if backend == "kubernetes":

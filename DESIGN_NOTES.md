@@ -161,12 +161,27 @@ flakiness in the next.
 the solver must get no exfiltration or cheat channel. This is the one deliberate
 tradeoff, documented here rather than hidden.
 
-The ClaudeSolver's tools (`list_dir`, `read_file`, `write_file`, `run_command`) all
-execute *inside* the hardened solve container via `docker exec` — solver-controlled code
-never touches the host, and only the changed files ever leave the container (as data, for
-grading and the diff). Model file paths are confined by a `normpath`-under-the-repo-dir
-check on top of the container boundary, and the loop is bounded by max-iterations, a
-wall-clock timeout, per-call token caps, and tool-output truncation.
+The ClaudeSolver's tools (`list_dir`, `read_file`, `search`, `edit_file`, `write_file`,
+`run_command`) all execute *inside* the hardened solve container via `docker exec` —
+solver-controlled code never touches the host, and only the changed files ever leave the
+container (as data, for grading and the diff). Model file paths are confined by a
+`normpath`-under-the-repo-dir check on top of the container boundary, and the loop is
+bounded by max-iterations, a wall-clock timeout, a context-token budget, per-call token
+caps, and tool-output truncation.
+
+**The agent loop is built to be measured.** Requests are rendered for prompt-cache
+stability (tools → frozen system prompt → messages, one top-level `cache_control`
+breakpoint) and cache reads/writes are priced separately, so cost per solve is honest
+rather than list-price. Adaptive thinking with a per-run `--effort` is the cost/quality
+lever. Failures that survive the SDK's retries (network, rate limits, 5xx), refusals, and
+truncation end the solve gracefully — the edits made so far are still graded and the
+reason lands in the report's `stop_reason` — because on a fleet of hundreds of runs a
+crashed run is a lost data point. Every step is recorded as a structured trajectory
+(`trajectory.jsonl`: exact tool inputs, exact outputs the model saw, per-step usage) next
+to the human-readable transcript; that is the unit of analysis for failure taxonomies,
+ablations, and training data. `edit_file` is an exact-match single replacement that
+refuses zero or multiple matches, the tool shape that keeps models from rewriting whole
+files.
 
 ---
 
