@@ -174,9 +174,21 @@ uv run task fleet bundles/* --solver claude \
   --samples 4 --concurrency 16 --container-limit 8
 ```
 
-The command prints per-job progress, pass@1 through pass@k, and writes a structured
-`fleet_summary.json`. The pass@k values use the standard unbiased estimator across
-tasks, not just the raw fraction of successful attempts.
+The command prints per-job progress with running spend, pass@1 through pass@k, and
+writes a structured `fleet_summary.json` (attempts, resolved, skipped, total cost).
+The pass@k values use the standard unbiased estimator across tasks, not just the raw
+fraction of successful attempts.
+
+`--max-cost-usd N` caps solver spend for the invocation: once completed jobs' cost
+reaches the cap no new job is admitted (jobs already in flight finish), the rest are
+reported `SKIPPED` and left pending, and pass@k is computed over the jobs that ran.
+Rerunning with a higher cap resumes exactly where it stopped.
+
+```sh
+# One sample per bundle, two containers on a small host, hard stop at $80.
+uv run task fleet bundles/*/ --solver claude --samples 1 \
+  --concurrency 2 --container-limit 2 --max-cost-usd 80
+```
 
 Execution can also be moved to Kubernetes while orchestration, SQLite state, and
 artifacts remain local. Build credentials for the target registry must already be
