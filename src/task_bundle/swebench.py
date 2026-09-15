@@ -107,6 +107,48 @@ def fetch_instance(instance_id: str) -> dict[str, Any]:
     )
 
 
+def list_instances(
+    *, repo: str | None = None, language: str | None = None, limit: int | None = None
+) -> list[dict[str, Any]]:
+    """Every dataset row matching the filters, in dataset order (full page scan)."""
+    matches: list[dict[str, Any]] = []
+    offset = 0
+    while True:
+        data = _http_json(
+            f"{ROWS_URL}?dataset={urllib.parse.quote(DATASET)}&config=default"
+            f"&split=test&offset={offset}&length={PAGE}"
+        )
+        page = data.get("rows", [])
+        if not page:
+            break
+        for entry in page:
+            row = dict(entry["row"])
+            if repo and row["repo"] != repo:
+                continue
+            if language and str(row.get("repo_language")) != language:
+                continue
+            matches.append(row)
+            if limit is not None and len(matches) >= limit:
+                return matches
+        offset += PAGE
+    return matches
+
+
+def bundle_name(row: dict[str, Any]) -> str:
+    """Short, unique, Docker-tag-safe bundle directory name: ``<repo>-<base sha[:12]>``.
+
+    Instance ids are ~100 chars; the (repo, base_commit[:12]) pair is unique across
+    the dataset and reads well in tables and image tags.
+    """
+    repo_name = str(row["repo"]).split("/")[-1].lower()
+    return f"{repo_name}-{str(row['base_commit'])[:12]}"
+
+
+def test_counts(row: dict[str, Any]) -> tuple[int, int]:
+    """(fail2pass, pass2pass) test counts of a dataset row."""
+    return len(_listish(row["fail_to_pass"])), len(_listish(row["pass_to_pass"]))
+
+
 def _listish(value: Any) -> list[str]:
     """Dataset list fields arrive as real lists, JSON strings, or Python-repr strings.
 

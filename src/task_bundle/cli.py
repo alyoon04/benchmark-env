@@ -49,7 +49,13 @@ from task_bundle.grading import (
 from task_bundle.harness import IMAGE_REPO, TaskImage, ensure_image, run_baseline_suites, smoke_test
 from task_bundle.run import execute_run
 from task_bundle.solver import ClaudeSolver, Solver, StubSolver
-from task_bundle.swebench import convert_instance, fetch_instance
+from task_bundle.swebench import (
+    bundle_name,
+    convert_instance,
+    fetch_instance,
+    list_instances,
+    test_counts,
+)
 from task_bundle.workspace import clone_at_commit, resolve_repo_url
 
 app = typer.Typer(
@@ -849,9 +855,28 @@ def verify_gold(
 
 @app.command("import-swebench")
 def import_swebench(
-    instance_id: Annotated[str, typer.Argument(help="SWE-bench Pro instance id (HuggingFace).")],
+    instance_id: Annotated[
+        str | None,
+        typer.Argument(help="SWE-bench Pro instance id; omit to import by --repo/--language."),
+    ] = None,
+    repo: Annotated[
+        str | None, typer.Option(help="Bulk: import every instance of this repo (org/name).")
+    ] = None,
+    language: Annotated[
+        str | None, typer.Option(help="Bulk: import every instance in this language.")
+    ] = None,
+    limit: Annotated[
+        int | None, typer.Option(help="Bulk: stop after this many matching instances.", min=1)
+    ] = None,
+    list_only: Annotated[
+        bool, typer.Option("--list", help="Bulk: print matching instances and exit.")
+    ] = False,
     dest: Annotated[
-        Path | None, typer.Option(help="Bundle directory to create (default: ./<instance-id>).")
+        Path | None,
+        typer.Option(
+            help="Bundle directory (single id; default ./<instance-id>) or parent directory "
+            "for bulk imports (default ./bundles)."
+        ),
     ] = None,
     test_command: Annotated[
         str | None, typer.Option(help="Override the per-language default test command.")
@@ -869,16 +894,99 @@ def import_swebench(
         ),
     ] = True,
 ) -> None:
-    """Convert a ScaleAI/SWE-bench_Pro instance into a ready-to-validate bundle.
+    """Convert ScaleAI/SWE-bench_Pro instances into ready-to-validate bundles.
 
-    Uses the instance's prebuilt Docker image (jefzda/sweap-images) as the base, the
-    test patch + explicit fail2pass/pass2pass ids as hidden tests, and the gold
-    patch as patch.diff. With --init (default) the bundle is built and then
-    verify-gold runs: a non-gradeable instance — e.g. one whose package is not an
-    editable install, so the solver's edits wouldn't be imported — fails loudly here
-    instead of silently grading every solver UNRESOLVED later.
+    Uses each instance's prebuilt Docker image (jefzda/sweap-images) as the base, the
+    test patch + explicit fail2pass/pass2pass ids as hidden tests, and the gold patch
+    as patch.diff. With --init (default) the bundle is built and then verify-gold
+    runs: a non-gradeable instance — e.g. one whose package is not an editable
+    install, so the solver's edits wouldn't be imported — fails loudly here instead
+    of silently grading every solver UNRESOLVED later.
+
+    Bulk mode (--repo and/or --language, no id) imports every match into
+    <dest>/<repo>-<sha12>/, continues past instances that fail or are refused, and
+    keeps <dest>/import_summary.json up to date so a re-run resumes: instances already
+    recorded as gradeable are skipped.
     """
-    bundle_dir = dest or Path(instance_id)
+    if instance_id is None and not (repo or language):
+        raise TaskError("Pass an instance id, or --repo/--language for a bulk import.")
+    if instance_id is not None and (repo or language or limit or list_only):
+        raise TaskError("--repo/--language/--limit/--list are for bulk imports; drop the id.")
+
+    if instance_id is not None:
+        bundle_dir = dest or Path(instance_id)
+        _import_one(instance_id, bundle_dir, test_command, timeout)
+        if not init_after:
+            console.print(f"Next: task init {bundle_dir} && task verify-gold {bundle_dir}")
+            return
+        init(bundle_dir)
+        if verify:
+            console.print("Confirming the golden patch resolves the task (verify-gold) ...")
+            verify_gold(bundle_dir)
+        return
+
+    parent = dest or Path("bundles")
+    console.print(f"Listing instances (repo={repo or '*'}, language={language or '*'}) ...")
+    rows = list_instances(repo=repo, language=language, limit=limit)
+    if not rows:
+        raise TaskError("No instances match the given --repo/--language.")
+    if list_only:
+        table = Table(title=f"{len(rows)} matching instance(s)")
+        for col in ("bundle", "repo", "lang", "f2p", "p2p", "instance id"):
+            table.add_column(col)
+        for row in rows:
+            f2p, p2p = test_counts(row)
+            table.add_row(
+                bundle_name(row),
+                str(row["repo"]),
+                str(row.get("repo_language")),
+                str(f2p),
+                str(p2p),
+                str(row["instance_id"]),
+            )
+        console.print(table)
+        return
+
+    summary_path = parent / "import_summary.json"
+    summary: dict[str, dict[str, str]] = {}
+    if summary_path.is_file():
+        summary = json.loads(summary_path.read_text())
+    counts: dict[str, int] = {}
+    for index, row in enumerate(rows, 1):
+        iid = str(row["instance_id"])
+        name = bundle_name(row)
+        bundle_dir = parent / name
+        prior = summary.get(iid)
+        if prior and prior.get("status") == "gradeable" and (bundle_dir / "task.json").is_file():
+            status, reason = "skipped", "already gradeable"
+        else:
+            console.rule(f"[{index}/{len(rows)}] {name}")
+            status, reason = _import_and_verify(
+                iid, bundle_dir, test_command, timeout, init_after=init_after, verify=verify
+            )
+        summary[iid] = {"bundle": str(bundle_dir), "status": status, "reason": reason}
+        counts[status] = counts.get(status, 0) + 1
+        parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+        style = {"gradeable": "green", "skipped": "dim", "refused": "yellow"}.get(status, "red")
+        console.print(f"[{style}]{status}[/{style}] {name}" + (f": {reason}" if reason else ""))
+
+    table = Table(title=f"Bulk import: {len(rows)} instance(s) -> {parent}")
+    for col in ("status", "count"):
+        table.add_column(col)
+    for status in ("gradeable", "skipped", "refused", "error", "converted"):
+        if status in counts:
+            table.add_row(status, str(counts[status]))
+    console.print(table)
+    usable = counts.get("gradeable", 0) + counts.get("skipped", 0)
+    console.print(
+        f"{usable} bundle(s) ready under {parent} (summary: {summary_path}). "
+        f"Next: task fleet {parent}/*/ --solver claude"
+    )
+
+
+def _import_one(instance_id: str, bundle_dir: Path, test_command: str | None, timeout: int) -> None:
+    """Fetch + convert one instance under its own command record."""
     with record_command("import-swebench", bundle_dir) as rec:
         console.print(f"Fetching [bold]{instance_id}[/bold] from HuggingFace ...")
         row = fetch_instance(instance_id)
@@ -890,13 +998,38 @@ def import_swebench(
             f"{len(bundle.spec.tests.pass2pass_ids)} pass2pass tests, "
             f"base image {bundle.spec.environment.base_image.split(':')[0]}:...)"
         )
-    if not init_after:
-        console.print(f"Next: task init {bundle_dir} && task verify-gold {bundle_dir}")
-        return
-    init(bundle_dir)
-    if verify:
-        console.print("Confirming the golden patch resolves the task (verify-gold) ...")
+
+
+def _import_and_verify(
+    instance_id: str,
+    bundle_dir: Path,
+    test_command: str | None,
+    timeout: int,
+    *,
+    init_after: bool,
+    verify: bool,
+) -> tuple[str, str]:
+    """One bulk step: convert (if new), init, verify-gold; never raises.
+
+    Returns (status, reason): ``gradeable`` when verify-gold passed, ``refused``
+    when it found the instance unsolvable (exit 2), ``converted`` when init/verify
+    were skipped by flag, ``error`` for anything else (build failure, clone
+    failure, network) so the sweep continues.
+    """
+    try:
+        if not (bundle_dir / "task.json").is_file():
+            _import_one(instance_id, bundle_dir, test_command, timeout)
+        if not init_after:
+            return "converted", "init skipped (--no-init)"
+        init(bundle_dir)
+        if not verify:
+            return "converted", "verify skipped (--no-verify)"
         verify_gold(bundle_dir)
+        return "gradeable", ""
+    except ContractViolation as e:
+        return "refused", str(e)
+    except TaskError as e:
+        return "error", f"{type(e).__name__}: {e}"
 
 
 @app.command()

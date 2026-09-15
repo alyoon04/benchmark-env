@@ -131,3 +131,143 @@ def test_test_patch_format_end_to_end(
     assert "RESOLVED" in result.output
     out = " ".join(result.output.split())
     assert "test_divide_fixed" in out
+
+
+class TestListInstances:
+    """Page scan with filters; the HTTP layer is stubbed with two synthetic pages."""
+
+    @pytest.fixture()
+    def pages(self, monkeypatch: pytest.MonkeyPatch) -> list[dict]:
+        import task_bundle.swebench as sw
+
+        def row(iid: str, repo: str, lang: str, sha: str) -> dict:
+            return {
+                "row": {
+                    **ROW,
+                    "instance_id": iid,
+                    "repo": repo,
+                    "repo_language": lang,
+                    "base_commit": sha,
+                }
+            }
+
+        page1 = [
+            row("i1", "ansible/ansible", "python", "a" * 40),
+            row("i2", "future-architect/vuls", "go", "b" * 40),
+        ]
+        page2 = [row("i3", "internetarchive/openlibrary", "python", "c" * 40)]
+        calls: list[str] = []
+
+        def fake_http(url: str) -> dict:
+            calls.append(url)
+            if "offset=0" in url:
+                return {"rows": page1}
+            if f"offset={sw.PAGE}" in url:
+                return {"rows": page2}
+            return {"rows": []}
+
+        monkeypatch.setattr(sw, "_http_json", fake_http)
+        return calls
+
+    def test_filters_by_repo_and_language(self, pages: list[str]) -> None:
+        from task_bundle.swebench import list_instances
+
+        assert [r["instance_id"] for r in list_instances()] == ["i1", "i2", "i3"]
+        assert [r["instance_id"] for r in list_instances(language="python")] == ["i1", "i3"]
+        assert [r["instance_id"] for r in list_instances(repo="future-architect/vuls")] == ["i2"]
+        assert list_instances(repo="nope/nope") == []
+
+    def test_limit_stops_scanning_early(self, pages: list[str]) -> None:
+        from task_bundle.swebench import list_instances
+
+        pages.clear()
+        assert [r["instance_id"] for r in list_instances(limit=1)] == ["i1"]
+        assert len(pages) == 1  # never fetched the second page
+
+
+class TestBundleName:
+    def test_repo_and_short_sha(self) -> None:
+        from task_bundle.swebench import bundle_name, test_counts
+
+        assert bundle_name(ROW) == f"ansible-{ROW['base_commit'][:12]}"
+        f2p, p2p = test_counts(ROW)
+        assert (f2p, p2p) == (1, 15)
+
+
+class TestBulkImport:
+    """Bulk mode: per-instance outcomes are recorded and a re-run resumes."""
+
+    @pytest.fixture()
+    def three_rows(self, monkeypatch: pytest.MonkeyPatch) -> list[dict]:
+        import task_bundle.cli as cli
+
+        rows = []
+        for i, sha in enumerate(("1" * 40, "2" * 40, "3" * 40), 1):
+            rows.append({**ROW, "instance_id": f"inst-{i}", "base_commit": sha})
+        monkeypatch.setattr(cli, "list_instances", lambda **kw: rows)
+        monkeypatch.setattr(
+            cli, "fetch_instance", lambda iid: next(r for r in rows if r["instance_id"] == iid)
+        )
+        return rows
+
+    def test_outcomes_and_resume(
+        self, tmp_path: Path, isolated_db: Path, monkeypatch: pytest.MonkeyPatch, three_rows: list
+    ) -> None:
+        import task_bundle.cli as cli
+        from task_bundle.errors import ContractViolation, DockerError
+
+        inits: list[Path] = []
+        monkeypatch.setattr(cli, "init", lambda p: inits.append(p))
+
+        def fake_verify(p: Path) -> None:
+            if p.name.endswith("2" * 12):
+                raise ContractViolation("golden patch does not resolve task")
+            if p.name.endswith("3" * 12):
+                raise DockerError("Image build failed")
+
+        monkeypatch.setattr(cli, "verify_gold", fake_verify)
+        dest = tmp_path / "bundles"
+        result = runner.invoke(
+            app, ["import-swebench", "--repo", "ansible/ansible", "--dest", str(dest)]
+        )
+        assert result.exit_code == 0, result.output
+        summary = json.loads((dest / "import_summary.json").read_text())
+        assert {k: v["status"] for k, v in summary.items()} == {
+            "inst-1": "gradeable",
+            "inst-2": "refused",
+            "inst-3": "error",
+        }
+        assert "does not resolve" in summary["inst-2"]["reason"]
+        assert "DockerError" in summary["inst-3"]["reason"]
+        assert (dest / f"ansible-{'1' * 12}" / "task.json").is_file()
+        assert len(inits) == 3
+        assert "1 bundle(s) ready" in " ".join(result.output.split())
+
+        # Re-run: the gradeable one is skipped, the other two are retried.
+        inits.clear()
+        result = runner.invoke(
+            app, ["import-swebench", "--repo", "ansible/ansible", "--dest", str(dest)]
+        )
+        assert result.exit_code == 0, result.output
+        summary = json.loads((dest / "import_summary.json").read_text())
+        assert summary["inst-1"]["status"] == "skipped"
+        assert [p.name[-12:] for p in inits] == ["2" * 12, "3" * 12]
+
+    def test_list_only_prints_table_without_importing(
+        self, tmp_path: Path, isolated_db: Path, three_rows: list
+    ) -> None:
+        result = runner.invoke(
+            app,
+            ["import-swebench", "--language", "python", "--list", "--dest", str(tmp_path / "b")],
+        )
+        assert result.exit_code == 0, result.output
+        assert "3 matching instance(s)" in result.output
+        assert not (tmp_path / "b").exists()
+
+    def test_id_and_bulk_flags_are_exclusive(self, isolated_db: Path) -> None:
+        result = runner.invoke(app, ["import-swebench", "some-id", "--repo", "x/y"])
+        assert result.exit_code != 0
+        assert "drop the id" in str(result.exception)
+        result = runner.invoke(app, ["import-swebench"])
+        assert result.exit_code != 0
+        assert "bulk import" in str(result.exception)
