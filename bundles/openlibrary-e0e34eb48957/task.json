@@ -1,0 +1,31 @@
+{
+  "environment": {
+    "base_image": "jefzda/sweap-images:internetarchive.openlibrary-internetarchive__openlibrary-62d2243131a9c7e6aee00d1e9c5660fd5b594e89-v0f5aece3601a5b4419f7ccec1dbda",
+    "env": {
+      "HOME": "/tmp"
+    },
+    "network_during_setup": true,
+    "setup_commands": []
+  },
+  "id": "openlibrary-e0e34eb48957",
+  "language": "python",
+  "repo": {
+    "commit": "e0e34eb48957fa645e0a3a8e30667252c3bed3fe",
+    "url": "https://github.com/internetarchive/openlibrary"
+  },
+  "schema_version": 1,
+  "solver": {
+    "workspace_excludes": []
+  },
+  "tests": {
+    "command_template": "python -m pytest {test_path} -q",
+    "fail2pass_ids": [
+      "openlibrary/tests/solr/updater/test_author.py::TestAuthorUpdater::test_workless_author"
+    ],
+    "pass2pass_ids": [],
+    "staging_dir": "tests/",
+    "test_patch": "tests/test_patch.diff",
+    "timeout_seconds": 600,
+    "visible_test_paths": []
+  }
+}

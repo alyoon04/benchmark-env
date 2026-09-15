@@ -1,0 +1,33 @@
+{
+  "environment": {
+    "base_image": "jefzda/sweap-images:internetarchive.openlibrary-internetarchive__openlibrary-de6ae10512f1b5ef585c8341b451bc49c9fd4996-vfa6ff903cb27f336e17654595dd90",
+    "env": {
+      "HOME": "/tmp"
+    },
+    "network_during_setup": true,
+    "setup_commands": []
+  },
+  "id": "openlibrary-02e8f0cc1e68",
+  "language": "python",
+  "repo": {
+    "commit": "02e8f0cc1e68830a66cb6bc4ee9f3b81463d5e65",
+    "url": "https://github.com/internetarchive/openlibrary"
+  },
+  "schema_version": 1,
+  "solver": {
+    "workspace_excludes": []
+  },
+  "tests": {
+    "command_template": "python -m pytest {test_path} -q",
+    "fail2pass_ids": [
+      "scripts/tests/test_partner_batch_imports.py::test_is_low_quality_book"
+    ],
+    "pass2pass_ids": [
+      "scripts/tests/test_partner_batch_imports.py::TestBiblio::test_sample_csv_row"
+    ],
+    "staging_dir": "tests/",
+    "test_patch": "tests/test_patch.diff",
+    "timeout_seconds": 600,
+    "visible_test_paths": []
+  }
+}

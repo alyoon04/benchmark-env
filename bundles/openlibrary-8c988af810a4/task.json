@@ -1,0 +1,39 @@
+{
+  "environment": {
+    "base_image": "jefzda/sweap-images:internetarchive.openlibrary-internetarchive__openlibrary-427f1f4eddfc54735ca451779d4f95bf683d1b0e-v0f5aece3601a5b4419f7ccec1dbda",
+    "env": {
+      "HOME": "/tmp"
+    },
+    "network_during_setup": true,
+    "setup_commands": []
+  },
+  "id": "openlibrary-8c988af810a4",
+  "language": "python",
+  "repo": {
+    "commit": "8c988af810a451a2bda2dd080852c81f662aee1e",
+    "url": "https://github.com/internetarchive/openlibrary"
+  },
+  "schema_version": 1,
+  "solver": {
+    "workspace_excludes": []
+  },
+  "tests": {
+    "command_template": "python -m pytest {test_path} -q",
+    "fail2pass_ids": [
+      "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_q_to_solr_params_edition_key[edition_key:OL123M-+key:\"/books/OL123M\"]",
+      "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_q_to_solr_params_edition_key[edition_key:\"OL123M\"-+key:\"/books/OL123M\"]",
+      "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_q_to_solr_params_edition_key[edition_key:\"/books/OL123M\"-+key:\"/books/OL123M\"]",
+      "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_q_to_solr_params_edition_key[edition_key:(OL123M)-+key:(\"/books/OL123M\")]"
+    ],
+    "pass2pass_ids": [
+      "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[Misc]",
+      "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[Quotes]",
+      "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[Operators]",
+      "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[ISBN-like]"
+    ],
+    "staging_dir": "tests/",
+    "test_patch": "tests/test_patch.diff",
+    "timeout_seconds": 600,
+    "visible_test_paths": []
+  }
+}
