@@ -1,0 +1,40 @@
+{
+  "environment": {
+    "base_image": "jefzda/sweap-images:internetarchive.openlibrary-internetarchive__openlibrary-7f6b722a10f822171501d027cad60afe53337732-ve8c8d62a2b60610a3c4631f5f23ed",
+    "env": {
+      "HOME": "/tmp"
+    },
+    "network_during_setup": true,
+    "setup_commands": []
+  },
+  "id": "openlibrary-febda3f008cb",
+  "language": "python",
+  "repo": {
+    "commit": "febda3f008cb4d4e4e0568ab4d671992ceea07cf",
+    "url": "https://github.com/internetarchive/openlibrary"
+  },
+  "schema_version": 1,
+  "solver": {
+    "workspace_excludes": []
+  },
+  "tests": {
+    "command_template": "python -m pytest {test_path} -q",
+    "fail2pass_ids": [
+      "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[Misc]",
+      "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[Quotes]",
+      "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[Operators]",
+      "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[ISBN-like]"
+    ],
+    "pass2pass_ids": [
+      "openlibrary/plugins/worksearch/tests/test_worksearch.py::test_process_facet",
+      "openlibrary/plugins/worksearch/tests/test_worksearch.py::test_get_doc",
+      "openlibrary/utils/tests/test_utils.py::test_str_to_key",
+      "openlibrary/utils/tests/test_utils.py::test_finddict",
+      "openlibrary/utils/tests/test_utils.py::test_extract_numeric_id_from_olid"
+    ],
+    "staging_dir": "tests/",
+    "test_patch": "tests/test_patch.diff",
+    "timeout_seconds": 600,
+    "visible_test_paths": []
+  }
+}

@@ -1,0 +1,23 @@
+diff --git a/openlibrary/tests/solr/test_update_work.py b/openlibrary/tests/solr/test_update_work.py
+index 152fddda402..a78a853ddab 100644
+--- a/openlibrary/tests/solr/test_update_work.py
++++ b/openlibrary/tests/solr/test_update_work.py
+@@ -6,7 +6,7 @@
+ from openlibrary.core.ratings import WorkRatingsSummary
+ 
+ from openlibrary.solr import update_work
+-from openlibrary.solr.data_provider import DataProvider
++from openlibrary.solr.data_provider import DataProvider, WorkReadingLogSolrSummary
+ from openlibrary.solr.update_work import (
+     CommitRequest,
+     SolrProcessor,
+@@ -111,6 +111,9 @@ def get_metadata(self, id):
+     def get_work_ratings(self, work_key: str) -> WorkRatingsSummary | None:
+         return None
+ 
++    def get_work_reading_log(self, work_key: str) -> WorkReadingLogSolrSummary | None:
++        return None
++
+ 
+ class Test_build_data:
+     @classmethod
