@@ -1,0 +1,52 @@
+{
+  "instance_internetarchive__openlibrary-00bec1e7c8f3272c469a58e1377df03f955ed478-v13642507b4fc1f8d234172bf8129942da2c2ca26": {
+    "bundle": "bundles/openlibrary-02f647f7d525",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-111347e9583372e8ef91c82e0612ea437ae3a9c9-v2d9a6c849c60ed19fd0858ce9e40b7cc8e097e59": {
+    "bundle": "bundles/openlibrary-c9795319b19c",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-11838fad1028672eb975c79d8984f03348500173-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4": {
+    "bundle": "bundles/openlibrary-4ff15b75531e",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-25858f9f0c165df25742acf8309ce909773f0cdd-v13642507b4fc1f8d234172bf8129942da2c2ca26": {
+    "bundle": "bundles/openlibrary-322d7a46cdc9",
+    "reason": "golden patch does not resolve task openlibrary-322d7a46cdc9 (1 problem(s) above).",
+    "status": "refused"
+  },
+  "instance_internetarchive__openlibrary-4a5d2a7d24c9e4c11d3069220c0685b736d5ecde-v13642507b4fc1f8d234172bf8129942da2c2ca26": {
+    "bundle": "bundles/openlibrary-90475fb6c168",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-5069b09e5f64428dce59b33455c8bb17fe577070-v8717e18970bcdc4e0d2cea3b1527752b21e74866": {
+    "bundle": "bundles/openlibrary-facafbe7339c",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-5c6c22f3d2edf2f1b10f5dc335e32cb6a5f40341-v76304ecdb3a5954fcf13feb710e8c40fcf24b73c": {
+    "bundle": "bundles/openlibrary-31d6ecf3c04c",
+    "reason": "golden patch does not resolve task openlibrary-31d6ecf3c04c (2 problem(s) above).",
+    "status": "refused"
+  },
+  "instance_internetarchive__openlibrary-8a5a63af6e0be406aa6c8c9b6d5f28b2f1b6af5a-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4": {
+    "bundle": "bundles/openlibrary-9d9f3a199838",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-b4f7c185ae5f1824ac7f3a18e8adf6a4b468459c-v08d8e8889ec945ab821fb156c04c7d2e2810debb": {
+    "bundle": "bundles/openlibrary-0b2e93f2d150",
+    "reason": "golden patch does not resolve task openlibrary-0b2e93f2d150 (1 problem(s) above).",
+    "status": "refused"
+  },
+  "instance_internetarchive__openlibrary-dbbd9d539c6d4fd45d5be9662aa19b6d664b5137-v08d8e8889ec945ab821fb156c04c7d2e2810debb": {
+    "bundle": "bundles/openlibrary-409914bf541b",
+    "reason": "",
+    "status": "gradeable"
+  }
+}

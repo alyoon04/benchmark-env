@@ -8,6 +8,7 @@ no dependency installation is needed.
 """
 
 import ast
+import http.client
 import json
 import re
 import time
@@ -64,7 +65,9 @@ def _http_json(url: str) -> dict[str, Any]:
         try:
             with urllib.request.urlopen(url, timeout=60) as resp:
                 return json.loads(resp.read())  # type: ignore[no-any-return]
-        except (urllib.error.URLError, TimeoutError) as e:
+        except (OSError, http.client.HTTPException, ValueError) as e:
+            # URLError, connection resets, remote disconnects and socket timeouts are
+            # all OSError; a truncated body surfaces as JSONDecodeError (ValueError).
             last = e
             if attempt < _HTTP_ATTEMPTS:
                 time.sleep(2 * attempt)

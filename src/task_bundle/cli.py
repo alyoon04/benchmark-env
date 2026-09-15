@@ -871,6 +871,13 @@ def import_swebench(
     list_only: Annotated[
         bool, typer.Option("--list", help="Bulk: print matching instances and exit.")
     ] = False,
+    retry_refused: Annotated[
+        bool,
+        typer.Option(
+            "--retry-refused",
+            help="Bulk: re-run verify-gold on instances a previous run recorded as refused.",
+        ),
+    ] = False,
     dest: Annotated[
         Path | None,
         typer.Option(
@@ -906,7 +913,8 @@ def import_swebench(
     Bulk mode (--repo and/or --language, no id) imports every match into
     <dest>/<repo>-<sha12>/, continues past instances that fail or are refused, and
     keeps <dest>/import_summary.json up to date so a re-run resumes: instances already
-    recorded as gradeable are skipped.
+    recorded as gradeable or refused are skipped (verify-gold is deterministic; pass
+    --retry-refused after a harness change) and errors are retried.
     """
     if instance_id is None and not (repo or language):
         raise TaskError("Pass an instance id, or --repo/--language for a bulk import.")
@@ -957,14 +965,17 @@ def import_swebench(
         name = bundle_name(row)
         bundle_dir = parent / name
         prior = summary.get(iid)
-        if prior and prior.get("status") == "gradeable" and (bundle_dir / "task.json").is_file():
-            status, reason = "skipped", "already gradeable"
+        prior_status = prior.get("status") if prior else None
+        settled = {"gradeable"} if retry_refused else {"gradeable", "refused"}
+        if prior_status in settled and (bundle_dir / "task.json").is_file():
+            # Settled outcome: leave the recorded status alone so later runs still see it.
+            status, reason = "skipped", f"already {prior_status}"
         else:
             console.rule(f"[{index}/{len(rows)}] {name}")
             status, reason = _import_and_verify(
                 iid, bundle_dir, test_command, timeout, init_after=init_after, verify=verify
             )
-        summary[iid] = {"bundle": str(bundle_dir), "status": status, "reason": reason}
+            summary[iid] = {"bundle": str(bundle_dir), "status": status, "reason": reason}
         counts[status] = counts.get(status, 0) + 1
         parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
@@ -1030,6 +1041,8 @@ def _import_and_verify(
         return "refused", str(e)
     except TaskError as e:
         return "error", f"{type(e).__name__}: {e}"
+    except Exception as e:  # a bulk sweep must outlive any one instance
+        return "error", f"unexpected {type(e).__name__}: {e}"
 
 
 @app.command()

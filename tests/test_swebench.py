@@ -243,15 +243,52 @@ class TestBulkImport:
         assert len(inits) == 3
         assert "1 bundle(s) ready" in " ".join(result.output.split())
 
-        # Re-run: the gradeable one is skipped, the other two are retried.
+        # Re-run: gradeable and refused are settled and skipped; the error is retried.
         inits.clear()
         result = runner.invoke(
             app, ["import-swebench", "--repo", "ansible/ansible", "--dest", str(dest)]
         )
         assert result.exit_code == 0, result.output
+        assert "skipped" in result.output
         summary = json.loads((dest / "import_summary.json").read_text())
-        assert summary["inst-1"]["status"] == "skipped"
+        # settled statuses are preserved, not overwritten with "skipped"
+        assert summary["inst-1"]["status"] == "gradeable"
+        assert summary["inst-2"]["status"] == "refused"
+        assert [p.name[-12:] for p in inits] == ["3" * 12]
+
+        # --retry-refused re-runs the refused one as well.
+        inits.clear()
+        result = runner.invoke(
+            app,
+            [
+                "import-swebench",
+                "--repo",
+                "ansible/ansible",
+                "--dest",
+                str(dest),
+                "--retry-refused",
+            ],
+        )
+        assert result.exit_code == 0, result.output
         assert [p.name[-12:] for p in inits] == ["2" * 12, "3" * 12]
+
+    def test_unexpected_exception_is_recorded_not_raised(
+        self, tmp_path: Path, isolated_db: Path, monkeypatch: pytest.MonkeyPatch, three_rows: list
+    ) -> None:
+        import task_bundle.cli as cli
+
+        def broken_init(p: Path) -> None:
+            raise KeyError("fail_to_pass")
+
+        monkeypatch.setattr(cli, "init", broken_init)
+        dest = tmp_path / "bundles"
+        result = runner.invoke(
+            app, ["import-swebench", "--repo", "ansible/ansible", "--dest", str(dest)]
+        )
+        assert result.exit_code == 0, result.output
+        summary = json.loads((dest / "import_summary.json").read_text())
+        assert {v["status"] for v in summary.values()} == {"error"}
+        assert "unexpected KeyError" in summary["inst-1"]["reason"]
 
     def test_list_only_prints_table_without_importing(
         self, tmp_path: Path, isolated_db: Path, three_rows: list
