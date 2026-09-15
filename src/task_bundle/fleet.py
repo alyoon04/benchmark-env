@@ -41,6 +41,36 @@ class FleetResult:
     verdict: str
     error: str | None = None
     resumed: bool = False
+    cost_usd: float | None = None
+
+
+SKIPPED = "SKIPPED"
+"""Verdict of a job the scheduler never ran (e.g. the spend cap was reached)."""
+
+
+class SpendCap:
+    """Admission gate on cumulative solver cost across a fleet invocation.
+
+    Checked when a worker picks a job up, so jobs already in flight may carry the
+    total past the cap by at most ``workers`` jobs' worth; nothing new starts once
+    completed spend reaches it.
+    """
+
+    def __init__(self, max_cost_usd: float | None) -> None:
+        self.max_cost_usd = max_cost_usd
+        self.spent_usd = 0.0
+        self._lock = threading.Lock()
+
+    def admit(self) -> bool:
+        if self.max_cost_usd is None:
+            return True
+        with self._lock:
+            return self.spent_usd < self.max_cost_usd
+
+    def record(self, cost_usd: float | None) -> None:
+        if cost_usd:
+            with self._lock:
+                self.spent_usd += cost_usd
 
 
 class FleetBackend(Protocol):
@@ -105,6 +135,7 @@ class FleetScheduler:
         concurrency: int,
         container_limit: int,
         disk_guard: DiskGuard,
+        spend_cap: SpendCap | None = None,
     ) -> None:
         if concurrency < 1:
             raise ValueError("concurrency must be at least 1")
@@ -116,6 +147,7 @@ class FleetScheduler:
         # workers that may use more than one.
         self.workers = min(concurrency, container_limit)
         self.disk_guard = disk_guard
+        self.spend_cap = spend_cap or SpendCap(None)
 
     def run(
         self,
@@ -127,8 +159,21 @@ class FleetScheduler:
         results: dict[str, FleetResult] = {}
 
         def admitted(job: FleetJob) -> FleetResult:
+            if not self.spend_cap.admit():
+                return FleetResult(
+                    job.id,
+                    job.run_id,
+                    job.task_id,
+                    job.sample,
+                    SKIPPED,
+                    f"spend cap reached (${self.spend_cap.spent_usd:.2f} of "
+                    f"${self.spend_cap.max_cost_usd:.2f}); rerun with a higher "
+                    "--max-cost-usd to resume",
+                )
             self.disk_guard.wait_for_capacity()
-            return self.backend.run(job)
+            result = self.backend.run(job)
+            self.spend_cap.record(result.cost_usd)
+            return result
 
         with ThreadPoolExecutor(max_workers=self.workers, thread_name_prefix="fleet") as pool:
             futures = {pool.submit(admitted, job): job for job in ordered}
@@ -209,12 +254,16 @@ def fleet_identity(jobs: Iterable[FleetJob]) -> tuple[str, str]:
 
 
 def pass_at_k(results: Iterable[FleetResult], k: int) -> float | None:
-    """Unbiased pass@k estimator averaged across tasks with at least ``k`` samples."""
+    """Unbiased pass@k estimator averaged across tasks with at least ``k`` samples.
+
+    Jobs that never ran (``SKIPPED``) are not samples and are left out.
+    """
     if k < 1:
         raise ValueError("k must be at least 1")
     by_task: dict[str, list[FleetResult]] = defaultdict(list)
     for result in results:
-        by_task[result.task_id].append(result)
+        if result.verdict != SKIPPED:
+            by_task[result.task_id].append(result)
     estimates = []
     for task_results in by_task.values():
         n = len(task_results)

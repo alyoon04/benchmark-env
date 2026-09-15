@@ -30,11 +30,13 @@ from task_bundle.db import Database, new_id
 from task_bundle.errors import BundleError, ContractViolation, DockerError, TaskError
 from task_bundle.execution import execute_recorded_run
 from task_bundle.fleet import (
+    SKIPPED,
     DiskGuard,
     FleetJob,
     FleetResult,
     FleetScheduler,
     LocalBackend,
+    SpendCap,
     fleet_identity,
     pass_at_k,
     stable_job,
@@ -491,6 +493,13 @@ def fleet(
     container_limit: Annotated[
         int, typer.Option(help="Maximum live task containers on this host/cluster.", min=1)
     ] = 4,
+    max_cost_usd: Annotated[
+        float | None,
+        typer.Option(
+            help="Stop admitting new jobs once completed jobs' solver cost reaches this "
+            "(USD, this invocation only); unrun jobs stay pending for a later rerun."
+        ),
+    ] = None,
     min_free_disk_gb: Annotated[
         float,
         typer.Option(help="Pause new jobs while artifact-volume free space is below this."),
@@ -644,6 +653,7 @@ def fleet(
             try:
                 if not job_db.claim_fleet_job(job.id, utc_now_iso()):
                     row = next(r for r in job_db.fleet_jobs(fleet_id) if r["id"] == job.id)
+                    run_row = job_db.get_run(job.run_id)
                     return FleetResult(
                         job.id,
                         job.run_id,
@@ -651,6 +661,7 @@ def fleet(
                         job.sample,
                         str(row["verdict"] or "ERROR"),
                         resumed=True,
+                        cost_usd=run_row["cost_usd"] if run_row is not None else None,
                     )
                 bundle = Bundle.load(job.bundle_path)
                 solver_obj = _make_solver(
@@ -687,6 +698,7 @@ def fleet(
                     job.task_id,
                     job.sample,
                     recorded.outcome.verdict,
+                    cost_usd=recorded.outcome.solve.cost_usd,
                 )
             except Exception as exc:
                 job_db.fail_fleet_job(job.id, f"{type(exc).__name__}: {exc}", utc_now_iso())
@@ -715,11 +727,16 @@ def fleet(
             on_pressure=pressure_notice,
         )
 
+        cap = SpendCap(max_cost_usd)
+
         def show_result(result: FleetResult, completed: int, total: int) -> None:
             detail = f": {result.error}" if result.error else ""
+            cost = (
+                f" (${result.cost_usd:.2f}, total ${cap.spent_usd:.2f})" if result.cost_usd else ""
+            )
             console.print(
                 f"[{completed}/{total}] {result.task_id} sample {result.sample}: "
-                f"{result.verdict}{detail}"
+                f"{result.verdict}{cost}{detail}"
             )
 
         scheduled = FleetScheduler(
@@ -727,30 +744,46 @@ def fleet(
             concurrency=concurrency,
             container_limit=container_limit,
             disk_guard=guard,
+            spend_cap=cap,
         ).run(pending, on_result=show_result)
         results = sorted([*resumed, *scheduled], key=lambda r: (r.task_id, r.sample))
         failures = [result for result in results if result.verdict == "ERROR"]
-        rec.db.finish_fleet(fleet_id, "partial" if failures else "completed", utc_now_iso())
+        skipped = [result for result in results if result.verdict == SKIPPED]
+        rec.db.finish_fleet(
+            fleet_id, "partial" if failures or skipped else "completed", utc_now_iso()
+        )
+        total_cost = sum(result.cost_usd or 0.0 for result in results)
 
         table = Table(title=f"Fleet {fleet_id}")
         for column in ("task", "sample", "run", "verdict", "source"):
             table.add_column(column)
         for result in results:
-            style = "green" if result.verdict == "RESOLVED" else "red"
+            style = {"RESOLVED": "green", SKIPPED: "dim"}.get(result.verdict, "red")
             table.add_row(
                 result.task_id,
                 str(result.sample),
                 result.run_id,
                 f"[{style}]{result.verdict}[/{style}]",
-                "resumed" if result.resumed else "executed",
+                "resumed"
+                if result.resumed
+                else "skipped"
+                if result.verdict == SKIPPED
+                else "executed",
             )
         console.print(table)
 
         pass_values = {str(k): pass_at_k(results, k) for k in range(1, samples + 1)}
+        ran = [result for result in results if result.verdict != SKIPPED]
+        resolved = sum(result.verdict == "RESOLVED" for result in ran)
         console.print(
             "  ".join(
                 f"pass@{k}: {value:.1%}" for k, value in pass_values.items() if value is not None
             )
+            + f"  ({resolved}/{len(ran)} attempts resolved"
+            + (f", {len(skipped)} not run" if skipped else "")
+            + f"; solver spend ${total_cost:.2f}"
+            + (f" of ${max_cost_usd:.2f} cap" if max_cost_usd is not None else "")
+            + ")"
         )
         summary = {
             "schema_version": 1,
@@ -759,6 +792,11 @@ def fleet(
             "backend": backend,
             "jobs": [result.__dict__ for result in results],
             "pass_at_k": pass_values,
+            "attempts": len(ran),
+            "resolved": resolved,
+            "skipped": len(skipped),
+            "total_cost_usd": round(total_cost, 6),
+            "max_cost_usd": max_cost_usd,
         }
         rec.save_artifact(
             "fleet_summary",
@@ -766,8 +804,15 @@ def fleet(
             json.dumps(summary, indent=2, sort_keys=True) + "\n",
         )
         rec.log(
-            f"fleet {fleet_id}: {len(results) - len(failures)} completed, {len(failures)} errors"
+            f"fleet {fleet_id}: {len(ran) - len(failures)} completed, {len(failures)} errors, "
+            f"{len(skipped)} skipped, ${total_cost:.2f} spent"
         )
+        if skipped:
+            console.print(
+                f"[yellow]{len(skipped)} job(s) not run: spend cap ${max_cost_usd:.2f} reached "
+                f"(${total_cost:.2f} spent). Rerun the same command with a higher "
+                "--max-cost-usd to resume.[/yellow]"
+            )
         if failures:
             details = "; ".join(
                 f"{result.task_id}[{result.sample}]: {result.error}" for result in failures[:5]

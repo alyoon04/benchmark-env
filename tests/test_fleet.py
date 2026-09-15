@@ -98,3 +98,42 @@ def test_pass_at_k_uses_unbiased_estimator() -> None:
     assert pass_at_k(results, 2) == pytest.approx(1 / 3)
     assert pass_at_k(results, 3) == pytest.approx(1 / 2)
     assert pass_at_k(results, 4) is None
+
+
+def test_spend_cap_stops_admitting_and_leaves_rest_unrun(tmp_path: Path) -> None:
+    """Completed cost gates admission; unrun jobs come back SKIPPED (not ERROR)."""
+    from task_bundle.fleet import SKIPPED, SpendCap
+
+    ran: list[str] = []
+
+    def execute(job):  # type: ignore[no-untyped-def]
+        ran.append(job.task_id)
+        return FleetResult(job.id, job.run_id, job.task_id, job.sample, "RESOLVED", cost_usd=0.6)
+
+    jobs = [_job(tmp_path, task=f"t{i}") for i in range(4)]
+    cap = SpendCap(1.0)
+    results = FleetScheduler(
+        LocalBackend(execute),
+        concurrency=1,
+        container_limit=1,
+        disk_guard=DiskGuard(tmp_path, 0, 0),
+        spend_cap=cap,
+    ).run(jobs)
+    # 0.6 < 1.0 admits the second job (total 1.2); the third and fourth are gated.
+    assert ran == ["t0", "t1"]
+    assert [r.verdict for r in results] == ["RESOLVED", "RESOLVED", SKIPPED, SKIPPED]
+    assert results[2].error is not None and "spend cap reached" in results[2].error
+    assert cap.spent_usd == pytest.approx(1.2)
+    # skipped jobs are not samples
+    assert pass_at_k(results, 1) == 1.0
+
+
+def test_no_cap_admits_everything(tmp_path: Path) -> None:
+    from task_bundle.fleet import SpendCap
+
+    cap = SpendCap(None)
+    assert cap.admit()
+    cap.record(99.0)
+    assert cap.admit()
+    cap.record(None)
+    assert cap.spent_usd == 99.0
