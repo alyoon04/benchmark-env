@@ -201,6 +201,30 @@ def go_run_pattern(test_id: str) -> str:
     return "/".join(f"^{re.escape(part)}$" for part in test_id.split("/"))
 
 
+def normalize_pytest_ids(fail2pass: list[str], pass2pass: list[str]) -> tuple[list[str], list[str]]:
+    """Repair pytest ids the dataset truncated at a space inside ``[...]``.
+
+    SWE-bench Pro stores ids like ``test_x[123-456-789-X 1234567890]`` cut at the
+    first space (``test_x[123-456-789-X``), which pytest cannot select. Such an id
+    is widened to the bare test (``test_x``: every parametrization must pass), and
+    the bare id is dropped from pass2pass when it also lands in fail2pass, since the
+    fail2pass requirement subsumes it. Well-formed ids are untouched.
+    """
+
+    def widen(ids: list[str]) -> list[str]:
+        seen: list[str] = []
+        for test_id in ids:
+            if "[" in test_id and not test_id.endswith("]"):
+                test_id = test_id[: test_id.index("[")]
+            if test_id not in seen:
+                seen.append(test_id)
+        return seen
+
+    f2p = widen(fail2pass)
+    p2p = [t for t in widen(pass2pass) if t not in f2p]
+    return f2p, p2p
+
+
 def convert_instance(
     row: dict[str, Any], dest: Path, *, test_command: str | None = None, timeout: int = 600
 ) -> Bundle:
@@ -213,6 +237,8 @@ def convert_instance(
         raise TaskError(f"No default test command for language {language!r}; pass --test-command.")
     fail2pass_ids = _listish(row["fail_to_pass"])
     pass2pass_ids = _listish(row["pass_to_pass"])
+    if language == "python":
+        fail2pass_ids, pass2pass_ids = normalize_pytest_ids(fail2pass_ids, pass2pass_ids)
     if language == "go":
         command = command.replace("{packages}", go_test_packages(str(row["test_patch"])))
         if test_command is None:
