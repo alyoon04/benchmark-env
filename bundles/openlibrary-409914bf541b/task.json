@@ -1,0 +1,37 @@
+{
+  "environment": {
+    "base_image": "jefzda/sweap-images:internetarchive.openlibrary-internetarchive__openlibrary-dbbd9d539c6d4fd45d5be9662aa19b6d664b5137-v08d8e8889ec945ab821fb156c04c7",
+    "env": {
+      "HOME": "/tmp"
+    },
+    "network_during_setup": true,
+    "setup_commands": []
+  },
+  "id": "openlibrary-409914bf541b",
+  "language": "python",
+  "repo": {
+    "commit": "409914bf541b32b2160200b7623060f2b5fab6c0",
+    "url": "https://github.com/internetarchive/openlibrary"
+  },
+  "schema_version": 1,
+  "solver": {
+    "workspace_excludes": []
+  },
+  "tests": {
+    "command_template": "python -m pytest {test_path} -q",
+    "fail2pass_ids": [
+      "openlibrary/plugins/openlibrary/tests/test_lists.py::TestListRecord::test_from_input_with_data"
+    ],
+    "pass2pass_ids": [
+      "openlibrary/plugins/openlibrary/tests/test_lists.py::TestListRecord::test_from_input_no_data",
+      "openlibrary/plugins/openlibrary/tests/test_lists.py::TestListRecord::test_from_input_seeds[seeds0-expected0]",
+      "openlibrary/plugins/openlibrary/tests/test_lists.py::TestListRecord::test_from_input_seeds[seeds1-expected1]",
+      "openlibrary/plugins/openlibrary/tests/test_lists.py::TestListRecord::test_from_input_seeds[seeds2-expected2]",
+      "openlibrary/plugins/openlibrary/tests/test_lists.py::TestListRecord::test_from_input_seeds[seeds3-expected3]"
+    ],
+    "staging_dir": "tests/",
+    "test_patch": "tests/test_patch.diff",
+    "timeout_seconds": 600,
+    "visible_test_paths": []
+  }
+}
