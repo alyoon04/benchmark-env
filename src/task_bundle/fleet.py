@@ -196,6 +196,29 @@ class FleetScheduler:
         return [results[job.id] for job in ordered]
 
 
+def bundles_from_summary(
+    summary_path: Path, statuses: Iterable[str] = ("gradeable", "skipped")
+) -> list[Path]:
+    """Bundle directories recorded in an ``import-swebench`` summary with one of ``statuses``.
+
+    Paths in the summary are as given to ``--dest`` (usually relative to the cwd of
+    the import). Each is resolved as-is first, then by name next to the summary file,
+    so the summary keeps working after the checkout moves. Order is the summary's.
+    """
+    wanted = set(statuses)
+    data = json.loads(summary_path.read_text())
+    bundles: list[Path] = []
+    for entry in data.values():
+        if entry.get("status") not in wanted:
+            continue
+        raw = Path(entry["bundle"])
+        candidate = raw if (raw / "task.json").is_file() else summary_path.parent / raw.name
+        if not (candidate / "task.json").is_file():
+            raise FileNotFoundError(f"bundle {raw} from {summary_path} not found")
+        bundles.append(candidate.resolve())
+    return bundles
+
+
 def stable_job(
     *,
     bundle_path: Path,

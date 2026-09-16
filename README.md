@@ -188,6 +188,11 @@ Rerunning with a higher cap resumes exactly where it stopped.
 # One sample per bundle, two containers on a small host, hard stop at $80.
 uv run task fleet bundles/*/ --solver claude --samples 1 \
   --concurrency 2 --container-limit 2 --max-cost-usd 80
+
+# The same over exactly the bundles a bulk import recorded as gradeable
+# (skips refused/errored ones; no shell globbing over dozens of paths).
+uv run task fleet --from-summary bundles/import_summary.json --solver claude \
+  --samples 2 --concurrency 2 --container-limit 2 --max-cost-usd 80
 ```
 
 Execution can also be moved to Kubernetes while orchestration, SQLite state, and

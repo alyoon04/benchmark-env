@@ -37,6 +37,7 @@ from task_bundle.fleet import (
     FleetScheduler,
     LocalBackend,
     SpendCap,
+    bundles_from_summary,
     fleet_identity,
     pass_at_k,
     stable_job,
@@ -473,8 +474,22 @@ def run(
 @app.command()
 def fleet(
     bundle_paths: Annotated[
-        list[Path], typer.Argument(help="One or more initialized task bundle directories.")
-    ],
+        list[Path] | None,
+        typer.Argument(
+            help="Initialized task bundle directories (may be combined with --from-summary)."
+        ),
+    ] = None,
+    from_summary: Annotated[
+        Path | None,
+        typer.Option(
+            help="Take bundles from an import-swebench import_summary.json (gradeable ones by "
+            "default), avoiding shell globbing/quoting over dozens of paths."
+        ),
+    ] = None,
+    summary_status: Annotated[
+        str,
+        typer.Option(help="Comma-separated summary statuses to include with --from-summary."),
+    ] = "gradeable,skipped",
     solver: Annotated[
         str, typer.Option(help='Solver to use: "stub" (deterministic) or "claude" (LLM).')
     ] = "stub",
@@ -541,8 +556,25 @@ def fleet(
         raise TaskError("--backend kubernetes requires --registry so task images can be pushed.")
     if patch and gold:
         raise TaskError("Pass either --patch or --gold, not both.")
+    selected: list[Path] = list(bundle_paths or [])
+    if from_summary is not None:
+        if not from_summary.is_file():
+            raise TaskError(f"No import summary at {from_summary}.")
+        try:
+            selected += bundles_from_summary(
+                from_summary, [s.strip() for s in summary_status.split(",") if s.strip()]
+            )
+        except FileNotFoundError as e:
+            raise TaskError(str(e)) from e
+    seen: set[Path] = set()
+    bundle_paths = []
+    for candidate in selected:
+        key = candidate.resolve()
+        if key not in seen:
+            seen.add(key)
+            bundle_paths.append(candidate)
     if not bundle_paths:
-        raise TaskError("Pass at least one bundle path.")
+        raise TaskError("Pass at least one bundle path, or --from-summary <import_summary.json>.")
 
     with record_command("fleet") as rec:
         bundles = [Bundle.load(path) for path in bundle_paths]

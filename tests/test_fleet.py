@@ -137,3 +137,44 @@ def test_no_cap_admits_everything(tmp_path: Path) -> None:
     assert cap.admit()
     cap.record(None)
     assert cap.spent_usd == 99.0
+
+
+def test_bundles_from_summary_filters_and_resolves(tmp_path: Path) -> None:
+    import json
+
+    from task_bundle.fleet import bundles_from_summary
+
+    parent = tmp_path / "bundles"
+    for name in ("repo-aaaa", "repo-bbbb", "repo-cccc"):
+        (parent / name).mkdir(parents=True)
+        (parent / name / "task.json").write_text("{}")
+    summary = {
+        "i1": {"bundle": "elsewhere/repo-aaaa", "status": "gradeable", "reason": ""},
+        "i2": {"bundle": str(parent / "repo-bbbb"), "status": "refused", "reason": "x"},
+        "i3": {"bundle": "elsewhere/repo-cccc", "status": "skipped", "reason": "already"},
+        "i4": {"bundle": "elsewhere/repo-dddd", "status": "error", "reason": "boom"},
+    }
+    (parent / "import_summary.json").write_text(json.dumps(summary))
+
+    # relative paths that don't resolve from cwd are found next to the summary file
+    got = bundles_from_summary(parent / "import_summary.json")
+    assert [p.name for p in got] == ["repo-aaaa", "repo-cccc"]
+    assert all(p.is_absolute() for p in got)
+    assert [p.name for p in bundles_from_summary(parent / "import_summary.json", ["refused"])] == [
+        "repo-bbbb"
+    ]
+    with pytest.raises(FileNotFoundError, match="repo-dddd"):
+        bundles_from_summary(parent / "import_summary.json", ["error"])
+
+
+def test_fleet_cli_requires_paths_or_summary(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from task_bundle.cli import app
+
+    result = CliRunner().invoke(app, ["fleet"])
+    assert result.exit_code != 0
+    assert "--from-summary" in str(result.exception)
+    result = CliRunner().invoke(app, ["fleet", "--from-summary", str(tmp_path / "nope.json")])
+    assert result.exit_code != 0
+    assert "No import summary" in str(result.exception)
