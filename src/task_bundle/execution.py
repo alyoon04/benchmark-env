@@ -9,7 +9,7 @@ from task_bundle.container import Docker
 from task_bundle.db import Database
 from task_bundle.harness import TaskImage
 from task_bundle.report import build_report, tool_versions, write_report
-from task_bundle.run import RunOutcome, execute_run
+from task_bundle.run import RunCaches, RunOutcome, execute_run
 from task_bundle.solver.base import Solver
 
 
@@ -34,6 +34,7 @@ def execute_recorded_run(
     image: TaskImage,
     solver: Solver,
     restart: bool = False,
+    caches: RunCaches | None = None,
 ) -> RecordedRun:
     """Execute, persist, and report one run.
 
@@ -58,7 +59,7 @@ def execute_recorded_run(
         json.dumps(versions, sort_keys=True),
     )
     try:
-        outcome = execute_run(docker, bundle, image, solver)
+        outcome = execute_run(docker, bundle, image, solver, caches=caches)
     except BaseException:
         db.finish_run(run_id, "ERROR", utc_now_iso())
         raise

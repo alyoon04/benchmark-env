@@ -19,11 +19,12 @@ import json
 import shlex
 import shutil
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
 from task_bundle.bundle import Bundle, HiddenTestFormat
-from task_bundle.container import SANDBOX_UID, WORKDIR, Docker
+from task_bundle.container import ARGV_BATCH, SANDBOX_UID, WORKDIR, Docker
 from task_bundle.errors import BundleError, DockerError
 from task_bundle.grading import Bucket, Status, TestExecution
 from task_bundle.workspace import (
@@ -163,6 +164,121 @@ def smoke_test(docker: Docker, image: TaskImage) -> None:
 
 
 # -- in-place changeset protocol -------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TreeSnapshot:
+    """Content hashes plus (size, mtime) of every regular file under the repo dir."""
+
+    hashes: dict[str, str]
+    stats: dict[str, str]
+
+
+class SnapshotCache:
+    """Per-image cache of the pre-solve snapshot (thread-safe).
+
+    A fresh container from a given image always has the same tree, so hashing it
+    once per image — not once per attempt — is exact, and it is the single most
+    expensive step of a run on large repositories.
+    """
+
+    def __init__(self) -> None:
+        self._snapshots: dict[str, TreeSnapshot] = {}
+        self._lock = threading.Lock()
+        self.hits = 0
+
+    def get(self, docker: Docker, image: TaskImage, container_id: str) -> TreeSnapshot:
+        with self._lock:
+            cached = self._snapshots.get(image.tag)
+            if cached is not None:
+                self.hits += 1
+                return cached
+        snap = snapshot(docker, image, container_id)
+        with self._lock:
+            self._snapshots.setdefault(image.tag, snap)
+        return snap
+
+
+def stat_listing(docker: Docker, image: TaskImage, container_id: str) -> dict[str, str]:
+    """``path -> "<size> <mtime>"`` for every regular file under the repo dir (cheap)."""
+    proc = docker.exec_argv(
+        container_id,
+        ["sh", "-c", "find . -type f -exec stat -c '%s %Y %n' {} +"],
+        timeout=MANIFEST_TIMEOUT,
+        user="0",
+        workdir=image.repo_dir,
+    )
+    if proc.returncode != 0:
+        raise DockerError(
+            f"Could not list the repository tree in {image.tag} (exit {proc.returncode}): "
+            f"{proc.stderr.decode(errors='replace').strip()}\n"
+            "The image needs `find` and `stat` (coreutils or busybox)."
+        )
+    return parse_stat_listing(proc.stdout.decode(errors="surrogateescape"))
+
+
+def parse_stat_listing(text: str) -> dict[str, str]:
+    listing: dict[str, str] = {}
+    for line in text.splitlines():
+        parts = line.split(" ", 2)
+        if len(parts) == 3:
+            listing[parts[2].removeprefix("./")] = f"{parts[0]} {parts[1]}"
+    return listing
+
+
+def hash_paths(
+    docker: Docker, image: TaskImage, container_id: str, paths: list[str]
+) -> dict[str, str]:
+    """sha256 of just ``paths`` (relative to the repo dir), batched to stay under ARG_MAX."""
+    hashes: dict[str, str] = {}
+    for start in range(0, len(paths), ARGV_BATCH):
+        chunk = [f"./{p}" for p in paths[start : start + ARGV_BATCH]]
+        proc = docker.exec_argv(
+            container_id,
+            ["sha256sum", *chunk],
+            timeout=MANIFEST_TIMEOUT,
+            user="0",
+            workdir=image.repo_dir,
+        )
+        if proc.returncode != 0:
+            raise DockerError(
+                f"Could not hash changed files in {image.tag} (exit {proc.returncode}): "
+                f"{proc.stderr.decode(errors='replace').strip()}"
+            )
+        hashes.update(parse_manifest(proc.stdout.decode(errors="surrogateescape")))
+    return hashes
+
+
+def snapshot(docker: Docker, image: TaskImage, container_id: str) -> TreeSnapshot:
+    """Full pre-solve snapshot: every file hashed (leak guard) and stat'ed (change detection)."""
+    return TreeSnapshot(
+        hashes=manifest(docker, image, container_id),
+        stats=stat_listing(docker, image, container_id),
+    )
+
+
+def snapshot_after(
+    docker: Docker, image: TaskImage, container_id: str, before: TreeSnapshot
+) -> dict[str, str]:
+    """Post-solve manifest, hashing only files whose size or mtime changed.
+
+    Deletions come from the name listing; unchanged (size, mtime) pairs keep their
+    pre-solve hash. Every write a solver can make through the container updates
+    mtime, so this is exact for real edits while costing a stat pass instead of a
+    full re-hash of the tree.
+    """
+    stats = stat_listing(docker, image, container_id)
+    changed = sorted(p for p, s in stats.items() if before.stats.get(p) != s)
+    return merge_snapshot(before, stats, hash_paths(docker, image, container_id, changed))
+
+
+def merge_snapshot(
+    before: TreeSnapshot, after_stats: dict[str, str], changed_hashes: dict[str, str]
+) -> dict[str, str]:
+    """Pure: pre-solve hashes, minus files now absent, overlaid with re-hashed changes."""
+    hashes = {p: h for p, h in before.hashes.items() if p in after_stats}
+    hashes.update(changed_hashes)
+    return hashes
 
 
 def manifest(docker: Docker, image: TaskImage, container_id: str) -> dict[str, str]:

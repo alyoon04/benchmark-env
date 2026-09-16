@@ -137,7 +137,13 @@ uniformly for stub and LLM solvers alike (the stub applies its patch host-side t
 sparse copy of the touched files and pushes them in through the same transport).
 
 **Baseline suites are re-run inside `task run`** rather than trusting a prior `validate`,
-so every report carries an honest before/after for that exact run.
+so every report carries an honest before/after for that exact run. `task fleet` shares
+per-image work across the attempts of one invocation — the pre-solve snapshot (computed
+once per image; the post-solve pass re-hashes only files whose size or mtime changed)
+and the baseline test phase (once per image and hidden-test content, reused by every
+sample of that task). Both are properties of the image, not the solver, so sharing them
+changes nothing about what is graded; each run's report still carries its full
+before/after. Profiling showed the full-tree hash was half of a small run's wall time.
 
 ---
 

@@ -131,3 +131,48 @@ class TestResolveWorkDir:
         docker = _FakeDocker("/app", present=False)
         resolve_work_dir(docker, make_bundle(tmp_path))  # type: ignore[arg-type]
         assert docker.pulled
+
+
+class TestSnapshots:
+    def test_parse_stat_listing_handles_spaces_in_names(self) -> None:
+        from task_bundle.harness import parse_stat_listing
+
+        text = "12 1700000000 ./a.py\n7 1700000001 ./dir/with space.txt\nbad line\n"
+        assert parse_stat_listing(text) == {
+            "a.py": "12 1700000000",
+            "dir/with space.txt": "7 1700000001",
+        }
+
+    def test_merge_snapshot_drops_deleted_and_overlays_changed(self) -> None:
+        from task_bundle.harness import TreeSnapshot, merge_snapshot
+
+        before = TreeSnapshot(
+            hashes={"keep": "h1", "edit": "h2", "gone": "h3"},
+            stats={"keep": "1 1", "edit": "2 1", "gone": "3 1"},
+        )
+        after_stats = {"keep": "1 1", "edit": "2 9", "new": "4 9"}
+        merged = merge_snapshot(before, after_stats, {"edit": "h2x", "new": "h4"})
+        assert merged == {"keep": "h1", "edit": "h2x", "new": "h4"}
+
+    def test_snapshot_cache_computes_once_per_image(self) -> None:
+        import task_bundle.harness as h
+        from task_bundle.harness import SnapshotCache, TaskImage, TreeSnapshot
+
+        calls: list[str] = []
+
+        def fake_snapshot(docker: object, image: TaskImage, cid: str) -> TreeSnapshot:
+            calls.append(image.tag)
+            return TreeSnapshot(hashes={"a": "1"}, stats={"a": "1 1"})
+
+        original = h.snapshot
+        h.snapshot = fake_snapshot  # type: ignore[assignment]
+        try:
+            cache = SnapshotCache()
+            img = TaskImage("t:1", "/workspace")
+            assert cache.get(None, img, "c1").hashes == {"a": "1"}  # type: ignore[arg-type]
+            assert cache.get(None, img, "c2").hashes == {"a": "1"}  # type: ignore[arg-type]
+            cache.get(None, TaskImage("t:2", "/workspace"), "c3")  # type: ignore[arg-type]
+        finally:
+            h.snapshot = original
+        assert calls == ["t:1", "t:2"]
+        assert cache.hits == 1

@@ -20,8 +20,11 @@ keeps everything that lives under the repo dir but outside git (submodules,
 No DB access here: the CLI layer persists the returned outcome.
 """
 
+import hashlib
 import tempfile
-from dataclasses import dataclass
+import threading
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from task_bundle.bundle import Bundle, utc_now_iso
@@ -33,12 +36,14 @@ from task_bundle.grading import (
     run_verdict,
 )
 from task_bundle.harness import (
+    SnapshotCache,
     TaskImage,
     apply_changeset,
     execute_staged_suite,
     hidden_blobs,
-    manifest,
     pull_changes,
+    snapshot,
+    snapshot_after,
 )
 from task_bundle.solver.base import SolveContext, Solver, SolveResult
 from task_bundle.workspace import (
@@ -48,6 +53,36 @@ from task_bundle.workspace import (
     ignored_paths,
     render_diff,
 )
+
+
+@dataclass
+class RunCaches:
+    """Work that is a property of the image, shared across attempts in one process.
+
+    - ``snapshots``: the pre-solve tree snapshot per image (hash + stat of every file).
+    - ``baselines``: the baseline test phase per (image, hidden-test content). The
+      baseline is what the image's tests do before any solver touches it, so every
+      sample of the same task in a fleet shares it; each run's report still carries
+      the full per-test before/after.
+    """
+
+    snapshots: SnapshotCache = field(default_factory=SnapshotCache)
+    baselines: dict[str, list[TestExecution]] = field(default_factory=dict)
+    baseline_hits: int = 0
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    def baseline_for(
+        self, key: str, compute: "Callable[[], list[TestExecution]]"
+    ) -> list[TestExecution]:
+        with self._lock:
+            cached = self.baselines.get(key)
+            if cached is not None:
+                self.baseline_hits += 1
+                return cached
+        executions = compute()
+        with self._lock:
+            self.baselines.setdefault(key, executions)
+        return executions
 
 
 @dataclass
@@ -65,25 +100,47 @@ class RunOutcome:
     finished_at: str
 
 
-def execute_run(docker: Docker, bundle: Bundle, image: TaskImage, solver: Solver) -> RunOutcome:
-    """Run the full baseline -> solve -> grade pipeline for one solver attempt."""
+def execute_run(
+    docker: Docker,
+    bundle: Bundle,
+    image: TaskImage,
+    solver: Solver,
+    *,
+    caches: RunCaches | None = None,
+) -> RunOutcome:
+    """Run the full baseline -> solve -> grade pipeline for one solver attempt.
+
+    ``caches`` (used by ``task fleet``) shares the image's pre-solve snapshot and
+    baseline test phase across attempts; a plain ``task run`` recomputes both.
+    """
     started_at = utc_now_iso()
     hidden = hidden_blobs(bundle)
 
     # Phase 1: baseline statuses (fresh container, hidden tests staged at the end).
-    cid = docker.run_detached(image.tag)
-    try:
-        baseline = execute_staged_suite(docker, bundle, image, cid)
-    finally:
-        docker.rm_force(cid)
+    def run_baseline() -> list[TestExecution]:
+        cid = docker.run_detached(image.tag)
+        try:
+            return execute_staged_suite(docker, bundle, image, cid)
+        finally:
+            docker.rm_force(cid)
+
+    if caches is None:
+        baseline = run_baseline()
+    else:
+        digest = hashlib.sha256(b"\0".join(hidden)).hexdigest()[:16]
+        baseline = caches.baseline_for(f"{image.tag}|{digest}", run_baseline)
 
     # Phase 2: solve in place. The container is the solver's workspace.
     with tempfile.TemporaryDirectory(prefix="task-bundle-run-") as tmp:
         work = Path(tmp)
         cid = docker.run_detached(image.tag)
         try:
-            before = manifest(docker, image, cid)
-            assert_no_hidden_content(before, hidden)
+            before = (
+                caches.snapshots.get(docker, image, cid)
+                if caches is not None
+                else snapshot(docker, image, cid)
+            )
+            assert_no_hidden_content(before.hashes, hidden)
             solve_result = solver.solve(
                 SolveContext(
                     docker=docker,
@@ -99,10 +156,10 @@ def execute_run(docker: Docker, bundle: Bundle, image: TaskImage, solver: Solver
                     timeout_seconds=bundle.spec.tests.timeout_seconds,
                 )
             )
-            after = manifest(docker, image, cid)
-            candidates = compute_changeset(before, after)
+            after = snapshot_after(docker, image, cid, before)
+            candidates = compute_changeset(before.hashes, after)
             changes = compute_changeset(
-                before, after, ignored_paths(bundle.workspace_dir, candidates.all_paths)
+                before.hashes, after, ignored_paths(bundle.workspace_dir, candidates.all_paths)
             )
             pull_changes(docker, image, cid, changes.present, work / "after")
         finally:

@@ -222,3 +222,26 @@ def test_fleet_runs_concurrently_then_resumes_without_duplicate_runs(
     assert second.exit_code == 0, second.output
     assert "2 jobs (2 resumed, 0 to run)" in " ".join(second.output.split())
     assert len(Database(isolated_db).list_runs()) == 2
+
+
+def test_run_caches_share_baseline_and_snapshot(
+    tmp_path: Path, shared_origin: tuple[str, str]
+) -> None:
+    """Two attempts on the same image with shared caches: the second reuses the
+    baseline phase and the pre-solve snapshot, and still grades correctly."""
+    from task_bundle.container import Docker
+    from task_bundle.harness import ensure_image
+    from task_bundle.run import RunCaches, execute_run
+    from task_bundle.solver.stub import StubSolver
+
+    bundle = make_initialized_bundle(tmp_path / "b", shared_origin, f2p=F2P_TEST, p2p=P2P_TEST)
+    docker = Docker()
+    image, _ = ensure_image(docker, bundle)
+    caches = RunCaches()
+    first = execute_run(docker, bundle, image, StubSolver(None), caches=caches)
+    second = execute_run(docker, bundle, image, StubSolver(GOLD_PATCH), caches=caches)
+    assert (first.verdict, second.verdict) == ("UNRESOLVED", "RESOLVED")
+    assert caches.baseline_hits == 1
+    assert caches.snapshots.hits == 1
+    assert second.baseline is first.baseline
+    assert "+    return a / b" in second.diff

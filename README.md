@@ -179,21 +179,34 @@ writes a structured `fleet_summary.json` (attempts, resolved, skipped, total cos
 The pass@k values use the standard unbiased estimator across tasks, not just the raw
 fraction of successful attempts.
 
+Within one `fleet` invocation, work that is a property of the *image* is shared
+across attempts: the pre-solve tree snapshot (hash + stat of every file, needed for
+the leak guard and change detection) is computed once per image, the post-solve pass
+re-hashes only files whose size or mtime changed, and the baseline test phase is run
+once per image and reused by every sample of that task. On large repositories this
+halves the non-solver time of each extra attempt. A plain `task run` recomputes
+everything.
+
 `--max-cost-usd N` caps solver spend for the invocation: once completed jobs' cost
 reaches the cap no new job is admitted (jobs already in flight finish), the rest are
 reported `SKIPPED` and left pending, and pass@k is computed over the jobs that ran.
 Rerunning with a higher cap resumes exactly where it stopped.
 
 ```sh
-# One sample per bundle, two containers on a small host, hard stop at $80.
+# One sample per bundle, four containers, hard stop at $80.
 uv run task fleet bundles/*/ --solver claude --samples 1 \
-  --concurrency 2 --container-limit 2 --max-cost-usd 80
+  --concurrency 4 --container-limit 4 --max-cost-usd 80
 
 # The same over exactly the bundles a bulk import recorded as gradeable
 # (skips refused/errored ones; no shell globbing over dozens of paths).
 uv run task fleet --from-summary bundles/import_summary.json --solver claude \
-  --samples 2 --concurrency 2 --container-limit 2 --max-cost-usd 80
+  --samples 2 --concurrency 4 --container-limit 4 --max-cost-usd 80
 ```
+
+On an Apple-silicon Mac running amd64 task images, use a colima VM with Rosetta
+(`softwareupdate --install-rosetta`, then `colima start --vz-rosetta`): container
+work runs about 3.5x faster than under qemu, with no image rebuilds. Size the VM
+for the concurrency you want (each task container gets 4 GB / 2 CPUs).
 
 Execution can also be moved to Kubernetes while orchestration, SQLite state, and
 artifacts remain local. Build credentials for the target registry must already be

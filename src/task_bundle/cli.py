@@ -50,7 +50,7 @@ from task_bundle.grading import (
     consolidate,
 )
 from task_bundle.harness import IMAGE_REPO, TaskImage, ensure_image, run_baseline_suites, smoke_test
-from task_bundle.run import execute_run
+from task_bundle.run import RunCaches, execute_run
 from task_bundle.solver import ClaudeSolver, Solver, StubSolver
 from task_bundle.swebench import (
     bundle_name,
@@ -680,6 +680,8 @@ def fleet(
             f"{min(concurrency, container_limit)} workers via {backend}."
         )
 
+        caches = RunCaches()
+
         def execute_job(job: FleetJob) -> FleetResult:
             job_db = Database(settings.db_path)
             try:
@@ -722,6 +724,7 @@ def fleet(
                     image=image,
                     solver=solver_obj,
                     restart=True,
+                    caches=caches,
                 )
                 job_db.finish_fleet_job(job.id, recorded.outcome.verdict, utc_now_iso())
                 return FleetResult(
@@ -837,8 +840,14 @@ def fleet(
         )
         rec.log(
             f"fleet {fleet_id}: {len(ran) - len(failures)} completed, {len(failures)} errors, "
-            f"{len(skipped)} skipped, ${total_cost:.2f} spent"
+            f"{len(skipped)} skipped, ${total_cost:.2f} spent; reused {caches.baseline_hits} "
+            f"baseline phase(s) and {caches.snapshots.hits} image snapshot(s)"
         )
+        if caches.baseline_hits or caches.snapshots.hits:
+            console.print(
+                f"[dim]reused {caches.baseline_hits} baseline phase(s) and "
+                f"{caches.snapshots.hits} image snapshot(s) across attempts[/dim]"
+            )
         if skipped:
             console.print(
                 f"[yellow]{len(skipped)} job(s) not run: spend cap ${max_cost_usd:.2f} reached "
