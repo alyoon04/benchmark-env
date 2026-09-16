@@ -1,0 +1,42 @@
+{
+  "environment": {
+    "base_image": "jefzda/sweap-images:internetarchive.openlibrary-internetarchive__openlibrary-77c16d530b4d5c0f33d68bead2c6b329aee9b996-ve8c8d62a2b60610a3c4631f5f23ed",
+    "env": {
+      "HOME": "/tmp"
+    },
+    "network_during_setup": true,
+    "setup_commands": []
+  },
+  "id": "openlibrary-80f511d3344a",
+  "language": "python",
+  "repo": {
+    "commit": "80f511d3344a1f9743ff6efb0a2bdf0051529e3a",
+    "url": "https://github.com/internetarchive/openlibrary"
+  },
+  "schema_version": 1,
+  "solver": {
+    "workspace_excludes": []
+  },
+  "tests": {
+    "command_template": "python -m pytest {test_path} -q",
+    "fail2pass_ids": [
+      "openlibrary/plugins/upstream/tests/test_table_of_contents.py::TestTableOfContents::test_from_db_well_formatted",
+      "openlibrary/plugins/upstream/tests/test_table_of_contents.py::TestTableOfContents::test_from_db_empty",
+      "openlibrary/plugins/upstream/tests/test_table_of_contents.py::TestTableOfContents::test_from_db_string_rows",
+      "openlibrary/plugins/upstream/tests/test_table_of_contents.py::TestTableOfContents::test_to_db",
+      "openlibrary/plugins/upstream/tests/test_table_of_contents.py::TestTableOfContents::test_from_markdown",
+      "openlibrary/plugins/upstream/tests/test_table_of_contents.py::TestTableOfContents::test_from_markdown_empty_lines",
+      "openlibrary/plugins/upstream/tests/test_table_of_contents.py::TestTocEntry::test_from_dict",
+      "openlibrary/plugins/upstream/tests/test_table_of_contents.py::TestTocEntry::test_from_dict_missing_fields",
+      "openlibrary/plugins/upstream/tests/test_table_of_contents.py::TestTocEntry::test_to_dict",
+      "openlibrary/plugins/upstream/tests/test_table_of_contents.py::TestTocEntry::test_to_dict_missing_fields",
+      "openlibrary/plugins/upstream/tests/test_table_of_contents.py::TestTocEntry::test_from_markdown",
+      "openlibrary/plugins/upstream/tests/test_table_of_contents.py::TestTocEntry::test_to_markdown"
+    ],
+    "pass2pass_ids": [],
+    "staging_dir": "tests/",
+    "test_patch": "tests/test_patch.diff",
+    "timeout_seconds": 600,
+    "visible_test_paths": []
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "environment": {
+    "base_image": "jefzda/sweap-images:internetarchive.openlibrary-internetarchive__openlibrary-a7b7dc5735a1b3a9824376b1b469b556dd413981-va4315b5dc369c1ef66ae22f9ae426",
+    "env": {
+      "HOME": "/tmp"
+    },
+    "network_during_setup": true,
+    "setup_commands": []
+  },
+  "id": "openlibrary-79dccb33ad74",
+  "language": "python",
+  "repo": {
+    "commit": "79dccb33ad74f3e9f16e69dce2bae7a568c8d3d0",
+    "url": "https://github.com/internetarchive/openlibrary"
+  },
+  "schema_version": 1,
+  "solver": {
+    "workspace_excludes": []
+  },
+  "tests": {
+    "command_template": "python -m pytest {test_path} -q",
+    "fail2pass_ids": [
+      "openlibrary/tests/solr/test_query_utils.py::test_luqum_remove_child[Group]",
+      "openlibrary/tests/solr/test_query_utils.py::test_luqum_remove_child[Unary]",
+      "openlibrary/tests/solr/test_query_utils.py::test_luqum_parser",
+      "openlibrary/tests/solr/test_query_utils.py::test_luqum_replace_field",
+      "openlibrary/tests/solr/test_query_utils.py::test_luqum_remove_field",
+      "openlibrary/tests/solr/test_query_utils.py::test_luqum_remove_child",
+      "openlibrary/tests/solr/test_query_utils.py::test_luqum_replace_child"
+    ],
+    "pass2pass_ids": [],
+    "staging_dir": "tests/",
+    "test_patch": "tests/test_patch.diff",
+    "timeout_seconds": 600,
+    "visible_test_paths": []
+  }
+}

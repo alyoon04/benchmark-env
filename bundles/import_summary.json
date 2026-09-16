@@ -4,6 +4,21 @@
     "reason": "",
     "status": "gradeable"
   },
+  "instance_internetarchive__openlibrary-03095f2680f7516fca35a58e665bf2a41f006273-v8717e18970bcdc4e0d2cea3b1527752b21e74866": {
+    "bundle": "bundles/openlibrary-46bcf7c30178",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-08ac40d050a64e1d2646ece4959af0c42bf6b7b5-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4": {
+    "bundle": "bundles/openlibrary-1e32ae3ec085",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-0a90f9f0256e4f933523e9842799e39f95ae29ce-v76304ecdb3a5954fcf13feb710e8c40fcf24b73c": {
+    "bundle": "bundles/openlibrary-5c6c22f3d2ed",
+    "reason": "",
+    "status": "gradeable"
+  },
   "instance_internetarchive__openlibrary-111347e9583372e8ef91c82e0612ea437ae3a9c9-v2d9a6c849c60ed19fd0858ce9e40b7cc8e097e59": {
     "bundle": "bundles/openlibrary-c9795319b19c",
     "reason": "",
@@ -14,10 +29,40 @@
     "reason": "",
     "status": "gradeable"
   },
+  "instance_internetarchive__openlibrary-1351c59fd43689753de1fca32c78d539a116ffc1-v29f82c9cf21d57b242f8d8b0e541525d259e2d63": {
+    "bundle": "bundles/openlibrary-ddbbdd64ecde",
+    "reason": "",
+    "status": "gradeable"
+  },
   "instance_internetarchive__openlibrary-25858f9f0c165df25742acf8309ce909773f0cdd-v13642507b4fc1f8d234172bf8129942da2c2ca26": {
     "bundle": "bundles/openlibrary-322d7a46cdc9",
     "reason": "golden patch does not resolve task openlibrary-322d7a46cdc9 (1 problem(s) above).",
     "status": "refused"
+  },
+  "instance_internetarchive__openlibrary-308a35d6999427c02b1dbf5211c033ad3b352556-ve8c8d62a2b60610a3c4631f5f23ed866bada9818": {
+    "bundle": "bundles/openlibrary-cb6c053eba49",
+    "reason": "golden patch does not resolve task openlibrary-cb6c053eba49 (1 problem(s) above).",
+    "status": "refused"
+  },
+  "instance_internetarchive__openlibrary-3c48b4bb782189e0858e6c3fc7956046cf3e1cfb-v2d9a6c849c60ed19fd0858ce9e40b7cc8e097e59": {
+    "bundle": "bundles/openlibrary-d38cb5a4162a",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-3f580a5f244c299d936d73d9e327ba873b6401d9-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4": {
+    "bundle": "bundles/openlibrary-46d7d325e6ed",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-427f1f4eddfc54735ca451779d4f95bf683d1b0e-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4": {
+    "bundle": "bundles/openlibrary-8c988af810a4",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-43f9e7e0d56a4f1d487533543c17040a029ac501-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4": {
+    "bundle": "bundles/openlibrary-de903b9535d5",
+    "reason": "",
+    "status": "gradeable"
   },
   "instance_internetarchive__openlibrary-4a5d2a7d24c9e4c11d3069220c0685b736d5ecde-v13642507b4fc1f8d234172bf8129942da2c2ca26": {
     "bundle": "bundles/openlibrary-90475fb6c168",
@@ -31,11 +76,76 @@
   },
   "instance_internetarchive__openlibrary-5c6c22f3d2edf2f1b10f5dc335e32cb6a5f40341-v76304ecdb3a5954fcf13feb710e8c40fcf24b73c": {
     "bundle": "bundles/openlibrary-31d6ecf3c04c",
-    "reason": "golden patch does not resolve task openlibrary-31d6ecf3c04c (2 problem(s) above).",
-    "status": "refused"
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-5de7de19211e71b29b2f2ba3b1dff2fe065d660f-v08d8e8889ec945ab821fb156c04c7d2e2810debb": {
+    "bundle": "bundles/openlibrary-5f7d8d190e2f",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-62d2243131a9c7e6aee00d1e9c5660fd5b594e89-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4": {
+    "bundle": "bundles/openlibrary-e0e34eb48957",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-6a117fab6c963b74dc1ba907d838e74f76d34a4b-v13642507b4fc1f8d234172bf8129942da2c2ca26": {
+    "bundle": "bundles/openlibrary-f1f4efd65942",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-6e889f4a733c9f8ce9a9bd2ec6a934413adcedb9-ve8c8d62a2b60610a3c4631f5f23ed866bada9818": {
+    "bundle": "bundles/openlibrary-9a9204b43f9a",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-6fdbbeee4c0a7e976ff3e46fb1d36f4eb110c428-v08d8e8889ec945ab821fb156c04c7d2e2810debb": {
+    "bundle": "bundles/openlibrary-71b18af1fa3b",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-77c16d530b4d5c0f33d68bead2c6b329aee9b996-ve8c8d62a2b60610a3c4631f5f23ed866bada9818": {
+    "bundle": "bundles/openlibrary-80f511d3344a",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-798055d1a19b8fa0983153b709f460be97e33064-v13642507b4fc1f8d234172bf8129942da2c2ca26": {
+    "bundle": "bundles/openlibrary-7b1ec94b425e",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-7bf3238533070f2d24bafbb26eedf675d51941f6-v08d8e8889ec945ab821fb156c04c7d2e2810debb": {
+    "bundle": "bundles/openlibrary-0c5d154db9a1",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-7edd1ef09d91fe0b435707633c5cc9af41dedddf-v76304ecdb3a5954fcf13feb710e8c40fcf24b73c": {
+    "bundle": "bundles/openlibrary-1d2cbffd8cbd",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-7f6b722a10f822171501d027cad60afe53337732-ve8c8d62a2b60610a3c4631f5f23ed866bada9818": {
+    "bundle": "bundles/openlibrary-febda3f008cb",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-7f7e53aa4cf74a4f8549a5bcd4810c527e2f6d7e-v13642507b4fc1f8d234172bf8129942da2c2ca26": {
+    "bundle": "bundles/openlibrary-630221ab686c",
+    "reason": "",
+    "status": "gradeable"
   },
   "instance_internetarchive__openlibrary-8a5a63af6e0be406aa6c8c9b6d5f28b2f1b6af5a-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4": {
     "bundle": "bundles/openlibrary-9d9f3a199838",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-910b08570210509f3bcfebf35c093a48243fe754-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4": {
+    "bundle": "bundles/openlibrary-e9e9d8be33f0",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-a7b7dc5735a1b3a9824376b1b469b556dd413981-va4315b5dc369c1ef66ae22f9ae4267aa3114e1b3": {
+    "bundle": "bundles/openlibrary-79dccb33ad74",
     "reason": "",
     "status": "gradeable"
   },
@@ -44,8 +154,48 @@
     "reason": "golden patch does not resolve task openlibrary-0b2e93f2d150 (1 problem(s) above).",
     "status": "refused"
   },
+  "instance_internetarchive__openlibrary-ba3abfb6af6e722185d3715929ab0f3e5a134eed-v76304ecdb3a5954fcf13feb710e8c40fcf24b73c": {
+    "bundle": "bundles/openlibrary-2edaf7283cf5",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-c05ccf2cd8baa81609434e0e35c4a63bc0da5a25-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4": {
+    "bundle": "bundles/openlibrary-0180e2ca33a1",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-c506c1b0b678892af5cb22c1c1dbc35d96787a0a-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4": {
+    "bundle": "bundles/openlibrary-2f590171b1d9",
+    "reason": "",
+    "status": "gradeable"
+  },
   "instance_internetarchive__openlibrary-dbbd9d539c6d4fd45d5be9662aa19b6d664b5137-v08d8e8889ec945ab821fb156c04c7d2e2810debb": {
     "bundle": "bundles/openlibrary-409914bf541b",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-de6ae10512f1b5ef585c8341b451bc49c9fd4996-vfa6ff903cb27f336e17654595dd900fa943dcd91": {
+    "bundle": "bundles/openlibrary-02e8f0cc1e68",
+    "reason": "golden patch does not resolve task openlibrary-02e8f0cc1e68 (2 problem(s) above).",
+    "status": "refused"
+  },
+  "instance_internetarchive__openlibrary-f343c08f89c772f7ba6c0246f384b9e6c3dc0add-v08d8e8889ec945ab821fb156c04c7d2e2810debb": {
+    "bundle": "bundles/openlibrary-53d376b14889",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-f8cc11d9c1575fdba5ac66aee0befca970da8d64-v13642507b4fc1f8d234172bf8129942da2c2ca26": {
+    "bundle": "bundles/openlibrary-3677dd20bcdd",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-fad4a40acf5ff5f06cd7441a5c7baf41a7d81fe4-vfa6ff903cb27f336e17654595dd900fa943dcd91": {
+    "bundle": "bundles/openlibrary-afb819f8166c",
+    "reason": "",
+    "status": "gradeable"
+  },
+  "instance_internetarchive__openlibrary-fdbc0d8f418333c7e575c40b661b582c301ef7ac-v13642507b4fc1f8d234172bf8129942da2c2ca26": {
+    "bundle": "bundles/openlibrary-69cb6f271d8e",
     "reason": "",
     "status": "gradeable"
   }

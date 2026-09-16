@@ -308,3 +308,47 @@ class TestBulkImport:
         result = runner.invoke(app, ["import-swebench"])
         assert result.exit_code != 0
         assert "bulk import" in str(result.exception)
+
+
+class TestNormalizePytestIds:
+    """The dataset cuts parametrized ids at the first space; widen them to the test."""
+
+    def test_truncated_ids_widen_to_bare_test(self) -> None:
+        from task_bundle.swebench import normalize_pytest_ids
+
+        f2p, p2p = normalize_pytest_ids(
+            [
+                "t/test_isbn.py::test_normalize_isbn[1841151866-1841151866]",
+                "t/test_isbn.py::test_normalize_isbn[123-456-789-X",
+                "t/test_isbn.py::test_normalize_isbn[ISBN:",
+                "t/test_isbn.py::test_other",
+            ],
+            [
+                "t/test_isbn.py::test_normalize_isbn[ok-ok]",
+                "t/test_code.py::test_warn[Frisian-Multiple",
+                "t/test_code.py::test_untouched[a-b]",
+            ],
+        )
+        assert f2p == [
+            "t/test_isbn.py::test_normalize_isbn[1841151866-1841151866]",
+            "t/test_isbn.py::test_normalize_isbn",
+            "t/test_isbn.py::test_other",
+        ]
+        # the bare p2p id that also appears in f2p is dropped; others widen or stay
+        assert p2p == [
+            "t/test_isbn.py::test_normalize_isbn[ok-ok]",
+            "t/test_code.py::test_warn",
+            "t/test_code.py::test_untouched[a-b]",
+        ]
+
+    def test_well_formed_ids_are_untouched(self) -> None:
+        from task_bundle.swebench import normalize_pytest_ids
+
+        f2p = ["a.py::t[x y]", "a.py::u"]
+        p2p = ["a.py::v[1]"]
+        assert normalize_pytest_ids(f2p, p2p) == (f2p, p2p)
+
+    def test_convert_applies_to_python_rows(self, tmp_path: Path) -> None:
+        row = dict(ROW, fail_to_pass=str(["x/test_a.py::test_p[A", "x/test_a.py::test_q"]))
+        bundle = convert_instance(row, tmp_path / "b")
+        assert bundle.spec.tests.fail2pass_ids == ["x/test_a.py::test_p", "x/test_a.py::test_q"]
