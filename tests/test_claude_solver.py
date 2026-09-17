@@ -186,6 +186,16 @@ class TestUnitBehavior:
         assert result.trajectory[-1]["type"] == "end"
         assert any(e["type"] == "error" for e in result.trajectory)
 
+    def test_api_error_before_any_progress_fails_the_run(self) -> None:
+        """A billing/outage refusal on the first call is not a model failure: raise so
+        the run records ERROR and a fleet resume retries it (seen live: 16 attempts
+        graded UNRESOLVED when the account's credit balance ran out mid-fleet)."""
+        docker = FakeDocker()
+        client = ScriptedClient([anthropic.APIConnectionError(request=cast(Any, None))])
+        with pytest.raises(SolverError, match="before the model produced anything"):
+            ClaudeSolver(model="claude-opus-5", client=client).solve(make_ctx(docker))
+        assert docker.commands == []
+
     def test_refusal_ends_the_solve(self) -> None:
         client = ScriptedClient([_msg(stop_reason="refusal")])
         result = ClaudeSolver(model="claude-opus-5", client=client).solve(make_ctx())

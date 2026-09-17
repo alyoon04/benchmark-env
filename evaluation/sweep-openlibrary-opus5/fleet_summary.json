@@ -1,0 +1,757 @@
+{
+  "attempts": 74,
+  "backend": "local",
+  "config_hash": "02d8191864a6fb8be27fb77d1f951866465834fc4f5b102d8505eeabd3fa56cf",
+  "fleet_id": "fleet_02d8191864a6fb8be27f",
+  "jobs": [
+    {
+      "cost_usd": 0.146803,
+      "error": null,
+      "job_id": "job_5da2a5778e011b27b06fb9cc",
+      "resumed": false,
+      "run_id": "run_5da2a5778e011b27b06fb9cc",
+      "sample": 1,
+      "task_id": "ansible-combine-vars",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.140674,
+      "error": null,
+      "job_id": "job_098f87c14c73cc254e0911ea",
+      "resumed": false,
+      "run_id": "run_098f87c14c73cc254e0911ea",
+      "sample": 2,
+      "task_id": "ansible-combine-vars",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.0,
+      "error": null,
+      "job_id": "job_b0bcb3ae1bd1439eef437152",
+      "resumed": false,
+      "run_id": "run_b0bcb3ae1bd1439eef437152",
+      "sample": 1,
+      "task_id": "openlibrary-0180e2ca33a1",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.0,
+      "error": null,
+      "job_id": "job_40d830d5a68a3282f82db75f",
+      "resumed": false,
+      "run_id": "run_40d830d5a68a3282f82db75f",
+      "sample": 2,
+      "task_id": "openlibrary-0180e2ca33a1",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.324632,
+      "error": null,
+      "job_id": "job_ae79709a0e9039f460088646",
+      "resumed": false,
+      "run_id": "run_ae79709a0e9039f460088646",
+      "sample": 1,
+      "task_id": "openlibrary-02f647f7d525",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.401764,
+      "error": null,
+      "job_id": "job_1cf94589acdd9323a8d1750d",
+      "resumed": false,
+      "run_id": "run_1cf94589acdd9323a8d1750d",
+      "sample": 2,
+      "task_id": "openlibrary-02f647f7d525",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.795084,
+      "error": null,
+      "job_id": "job_e675927ae422958e6b2261b7",
+      "resumed": false,
+      "run_id": "run_e675927ae422958e6b2261b7",
+      "sample": 1,
+      "task_id": "openlibrary-0c5d154db9a1",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.764816,
+      "error": null,
+      "job_id": "job_34deee15c05401f6fc2d58f0",
+      "resumed": false,
+      "run_id": "run_34deee15c05401f6fc2d58f0",
+      "sample": 2,
+      "task_id": "openlibrary-0c5d154db9a1",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.176781,
+      "error": null,
+      "job_id": "job_e0b71ca292629064cb301150",
+      "resumed": false,
+      "run_id": "run_e0b71ca292629064cb301150",
+      "sample": 1,
+      "task_id": "openlibrary-1d2cbffd8cbd",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.114923,
+      "error": null,
+      "job_id": "job_efd0e692700bdb487e542373",
+      "resumed": false,
+      "run_id": "run_efd0e692700bdb487e542373",
+      "sample": 2,
+      "task_id": "openlibrary-1d2cbffd8cbd",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 1.749964,
+      "error": null,
+      "job_id": "job_f4fd99800f848e4be31fc7ad",
+      "resumed": false,
+      "run_id": "run_f4fd99800f848e4be31fc7ad",
+      "sample": 1,
+      "task_id": "openlibrary-1e32ae3ec085",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 1.333061,
+      "error": null,
+      "job_id": "job_4cb403fe01fc48b1b3bee05c",
+      "resumed": false,
+      "run_id": "run_4cb403fe01fc48b1b3bee05c",
+      "sample": 2,
+      "task_id": "openlibrary-1e32ae3ec085",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.141086,
+      "error": null,
+      "job_id": "job_3be20f8530e98619f4fbcdd5",
+      "resumed": false,
+      "run_id": "run_3be20f8530e98619f4fbcdd5",
+      "sample": 1,
+      "task_id": "openlibrary-2edaf7283cf5",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.028564,
+      "error": null,
+      "job_id": "job_1acee453756c2923190ebe7a",
+      "resumed": false,
+      "run_id": "run_1acee453756c2923190ebe7a",
+      "sample": 2,
+      "task_id": "openlibrary-2edaf7283cf5",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.0,
+      "error": null,
+      "job_id": "job_7d033d92c43834cad661c17c",
+      "resumed": false,
+      "run_id": "run_7d033d92c43834cad661c17c",
+      "sample": 1,
+      "task_id": "openlibrary-2f590171b1d9",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.0,
+      "error": null,
+      "job_id": "job_fcacb74d66b630c870dfedcc",
+      "resumed": false,
+      "run_id": "run_fcacb74d66b630c870dfedcc",
+      "sample": 2,
+      "task_id": "openlibrary-2f590171b1d9",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.848566,
+      "error": null,
+      "job_id": "job_893f51b2f4eab1dcfb5de592",
+      "resumed": false,
+      "run_id": "run_893f51b2f4eab1dcfb5de592",
+      "sample": 1,
+      "task_id": "openlibrary-31d6ecf3c04c",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.637912,
+      "error": null,
+      "job_id": "job_dd5537c415aa7137e8844cd6",
+      "resumed": false,
+      "run_id": "run_dd5537c415aa7137e8844cd6",
+      "sample": 2,
+      "task_id": "openlibrary-31d6ecf3c04c",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.0,
+      "error": null,
+      "job_id": "job_cc59b6797ca1ce6e5ba370ad",
+      "resumed": false,
+      "run_id": "run_cc59b6797ca1ce6e5ba370ad",
+      "sample": 1,
+      "task_id": "openlibrary-3677dd20bcdd",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.0,
+      "error": null,
+      "job_id": "job_b6f51b7292eb175141debc4d",
+      "resumed": false,
+      "run_id": "run_b6f51b7292eb175141debc4d",
+      "sample": 2,
+      "task_id": "openlibrary-3677dd20bcdd",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.0,
+      "error": null,
+      "job_id": "job_76b7ebe9b5f5547800506ec9",
+      "resumed": false,
+      "run_id": "run_76b7ebe9b5f5547800506ec9",
+      "sample": 1,
+      "task_id": "openlibrary-409914bf541b",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.0,
+      "error": null,
+      "job_id": "job_e49103336f40be9a9ef6a101",
+      "resumed": false,
+      "run_id": "run_e49103336f40be9a9ef6a101",
+      "sample": 2,
+      "task_id": "openlibrary-409914bf541b",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.940907,
+      "error": null,
+      "job_id": "job_0c24b6287980c3ec55258732",
+      "resumed": false,
+      "run_id": "run_0c24b6287980c3ec55258732",
+      "sample": 1,
+      "task_id": "openlibrary-46bcf7c30178",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.845457,
+      "error": null,
+      "job_id": "job_013245dabf557fc3a64bf48c",
+      "resumed": false,
+      "run_id": "run_013245dabf557fc3a64bf48c",
+      "sample": 2,
+      "task_id": "openlibrary-46bcf7c30178",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.723977,
+      "error": null,
+      "job_id": "job_5174d1c74429ecd2ea83421d",
+      "resumed": false,
+      "run_id": "run_5174d1c74429ecd2ea83421d",
+      "sample": 1,
+      "task_id": "openlibrary-46d7d325e6ed",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.558091,
+      "error": null,
+      "job_id": "job_dfb4c642e764606e174504eb",
+      "resumed": false,
+      "run_id": "run_dfb4c642e764606e174504eb",
+      "sample": 2,
+      "task_id": "openlibrary-46d7d325e6ed",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.886606,
+      "error": null,
+      "job_id": "job_957f22806a165eeead477841",
+      "resumed": false,
+      "run_id": "run_957f22806a165eeead477841",
+      "sample": 1,
+      "task_id": "openlibrary-4ff15b75531e",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 1.947296,
+      "error": null,
+      "job_id": "job_db79ce894efc9a624c16a165",
+      "resumed": false,
+      "run_id": "run_db79ce894efc9a624c16a165",
+      "sample": 2,
+      "task_id": "openlibrary-4ff15b75531e",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.0,
+      "error": null,
+      "job_id": "job_8b64e18c5d7ebdb8493162f8",
+      "resumed": false,
+      "run_id": "run_8b64e18c5d7ebdb8493162f8",
+      "sample": 1,
+      "task_id": "openlibrary-53d376b14889",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.0,
+      "error": null,
+      "job_id": "job_5c6c0f2ad494894bfb2e17d2",
+      "resumed": false,
+      "run_id": "run_5c6c0f2ad494894bfb2e17d2",
+      "sample": 2,
+      "task_id": "openlibrary-53d376b14889",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 1.466618,
+      "error": null,
+      "job_id": "job_f129e82ac09562de98baeb40",
+      "resumed": false,
+      "run_id": "run_f129e82ac09562de98baeb40",
+      "sample": 1,
+      "task_id": "openlibrary-5c6c22f3d2ed",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 1.552373,
+      "error": null,
+      "job_id": "job_700e43b8dd5e7880cca5ee72",
+      "resumed": false,
+      "run_id": "run_700e43b8dd5e7880cca5ee72",
+      "sample": 2,
+      "task_id": "openlibrary-5c6c22f3d2ed",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.850794,
+      "error": null,
+      "job_id": "job_583c26cf6264fa4d92ac723d",
+      "resumed": false,
+      "run_id": "run_583c26cf6264fa4d92ac723d",
+      "sample": 1,
+      "task_id": "openlibrary-5f7d8d190e2f",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.079365,
+      "error": null,
+      "job_id": "job_0966fedc72d045c662044474",
+      "resumed": false,
+      "run_id": "run_0966fedc72d045c662044474",
+      "sample": 2,
+      "task_id": "openlibrary-5f7d8d190e2f",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.830978,
+      "error": null,
+      "job_id": "job_d9009f443a59fb86907a19ec",
+      "resumed": false,
+      "run_id": "run_d9009f443a59fb86907a19ec",
+      "sample": 1,
+      "task_id": "openlibrary-630221ab686c",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.089112,
+      "error": null,
+      "job_id": "job_4698af35792d25ee31d510cb",
+      "resumed": false,
+      "run_id": "run_4698af35792d25ee31d510cb",
+      "sample": 2,
+      "task_id": "openlibrary-630221ab686c",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.0,
+      "error": null,
+      "job_id": "job_ca326a66e9886157c235641e",
+      "resumed": false,
+      "run_id": "run_ca326a66e9886157c235641e",
+      "sample": 1,
+      "task_id": "openlibrary-69cb6f271d8e",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.0,
+      "error": null,
+      "job_id": "job_7b69485c955d28a29f85a3a9",
+      "resumed": false,
+      "run_id": "run_7b69485c955d28a29f85a3a9",
+      "sample": 2,
+      "task_id": "openlibrary-69cb6f271d8e",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 1.714424,
+      "error": null,
+      "job_id": "job_0d6165ed31232f0c821e9bff",
+      "resumed": false,
+      "run_id": "run_0d6165ed31232f0c821e9bff",
+      "sample": 1,
+      "task_id": "openlibrary-71b18af1fa3b",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 2.1008,
+      "error": null,
+      "job_id": "job_a5ea591bfeda965de5407f47",
+      "resumed": false,
+      "run_id": "run_a5ea591bfeda965de5407f47",
+      "sample": 2,
+      "task_id": "openlibrary-71b18af1fa3b",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.528924,
+      "error": null,
+      "job_id": "job_3823a1448e98b16466065b03",
+      "resumed": false,
+      "run_id": "run_3823a1448e98b16466065b03",
+      "sample": 1,
+      "task_id": "openlibrary-79dccb33ad74",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.257062,
+      "error": null,
+      "job_id": "job_a2d6891279dece4a6caa3d6e",
+      "resumed": false,
+      "run_id": "run_a2d6891279dece4a6caa3d6e",
+      "sample": 2,
+      "task_id": "openlibrary-79dccb33ad74",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.412946,
+      "error": null,
+      "job_id": "job_308f3b3a40ff8ca3d8e8934a",
+      "resumed": false,
+      "run_id": "run_308f3b3a40ff8ca3d8e8934a",
+      "sample": 1,
+      "task_id": "openlibrary-7b1ec94b425e",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.333363,
+      "error": null,
+      "job_id": "job_424722c52ce36065009392c9",
+      "resumed": false,
+      "run_id": "run_424722c52ce36065009392c9",
+      "sample": 2,
+      "task_id": "openlibrary-7b1ec94b425e",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 1.214484,
+      "error": null,
+      "job_id": "job_bf986dff3da8ac99adcfb893",
+      "resumed": false,
+      "run_id": "run_bf986dff3da8ac99adcfb893",
+      "sample": 1,
+      "task_id": "openlibrary-80f511d3344a",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 1.198625,
+      "error": null,
+      "job_id": "job_0b6804de2291ef2eac8b41db",
+      "resumed": false,
+      "run_id": "run_0b6804de2291ef2eac8b41db",
+      "sample": 2,
+      "task_id": "openlibrary-80f511d3344a",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 1.565455,
+      "error": null,
+      "job_id": "job_ba66744f1447470b899b197a",
+      "resumed": false,
+      "run_id": "run_ba66744f1447470b899b197a",
+      "sample": 1,
+      "task_id": "openlibrary-8c988af810a4",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.398472,
+      "error": null,
+      "job_id": "job_3e11010803d5cbd73f200867",
+      "resumed": false,
+      "run_id": "run_3e11010803d5cbd73f200867",
+      "sample": 2,
+      "task_id": "openlibrary-8c988af810a4",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.374052,
+      "error": null,
+      "job_id": "job_a7b66c8178ba259c185ac3af",
+      "resumed": false,
+      "run_id": "run_a7b66c8178ba259c185ac3af",
+      "sample": 1,
+      "task_id": "openlibrary-90475fb6c168",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.223561,
+      "error": null,
+      "job_id": "job_12c8813bbd0351049864899d",
+      "resumed": false,
+      "run_id": "run_12c8813bbd0351049864899d",
+      "sample": 2,
+      "task_id": "openlibrary-90475fb6c168",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.103983,
+      "error": null,
+      "job_id": "job_a9a512d4c6bc894b3e94ee2e",
+      "resumed": false,
+      "run_id": "run_a9a512d4c6bc894b3e94ee2e",
+      "sample": 1,
+      "task_id": "openlibrary-9a9204b43f9a",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 1.532439,
+      "error": null,
+      "job_id": "job_917d78dc4b860e9ff6b3a791",
+      "resumed": false,
+      "run_id": "run_917d78dc4b860e9ff6b3a791",
+      "sample": 2,
+      "task_id": "openlibrary-9a9204b43f9a",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.904599,
+      "error": null,
+      "job_id": "job_8fca1e9b8878dd7069adb011",
+      "resumed": false,
+      "run_id": "run_8fca1e9b8878dd7069adb011",
+      "sample": 1,
+      "task_id": "openlibrary-9d9f3a199838",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.040642,
+      "error": null,
+      "job_id": "job_3062353295ce6d1508ffc296",
+      "resumed": false,
+      "run_id": "run_3062353295ce6d1508ffc296",
+      "sample": 2,
+      "task_id": "openlibrary-9d9f3a199838",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.0,
+      "error": null,
+      "job_id": "job_ea82548af78ea4cedbf0718b",
+      "resumed": false,
+      "run_id": "run_ea82548af78ea4cedbf0718b",
+      "sample": 1,
+      "task_id": "openlibrary-afb819f8166c",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 0.0,
+      "error": null,
+      "job_id": "job_9e8f067db834b2b46405f1c6",
+      "resumed": false,
+      "run_id": "run_9e8f067db834b2b46405f1c6",
+      "sample": 2,
+      "task_id": "openlibrary-afb819f8166c",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 2.259152,
+      "error": null,
+      "job_id": "job_4e85b203e43cf735dc0cc1a4",
+      "resumed": false,
+      "run_id": "run_4e85b203e43cf735dc0cc1a4",
+      "sample": 1,
+      "task_id": "openlibrary-c9795319b19c",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 1.65552,
+      "error": null,
+      "job_id": "job_a8aad94d05695237cb6e7377",
+      "resumed": false,
+      "run_id": "run_a8aad94d05695237cb6e7377",
+      "sample": 2,
+      "task_id": "openlibrary-c9795319b19c",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 1.259469,
+      "error": null,
+      "job_id": "job_5bf30924988b22c31f547cc7",
+      "resumed": false,
+      "run_id": "run_5bf30924988b22c31f547cc7",
+      "sample": 1,
+      "task_id": "openlibrary-d38cb5a4162a",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.964078,
+      "error": null,
+      "job_id": "job_2617f3edc05b898105241f75",
+      "resumed": false,
+      "run_id": "run_2617f3edc05b898105241f75",
+      "sample": 2,
+      "task_id": "openlibrary-d38cb5a4162a",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.255463,
+      "error": null,
+      "job_id": "job_4cb344590cd0ab3d4c887b1b",
+      "resumed": false,
+      "run_id": "run_4cb344590cd0ab3d4c887b1b",
+      "sample": 1,
+      "task_id": "openlibrary-ddbbdd64ecde",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.790349,
+      "error": null,
+      "job_id": "job_a0bb9f00104f2bc7e6a74f4e",
+      "resumed": false,
+      "run_id": "run_a0bb9f00104f2bc7e6a74f4e",
+      "sample": 2,
+      "task_id": "openlibrary-ddbbdd64ecde",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.369039,
+      "error": null,
+      "job_id": "job_817373a377ceca46ef4730e1",
+      "resumed": false,
+      "run_id": "run_817373a377ceca46ef4730e1",
+      "sample": 1,
+      "task_id": "openlibrary-de903b9535d5",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.835492,
+      "error": null,
+      "job_id": "job_47d837a62522bb05e87ab9c1",
+      "resumed": false,
+      "run_id": "run_47d837a62522bb05e87ab9c1",
+      "sample": 2,
+      "task_id": "openlibrary-de903b9535d5",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.873967,
+      "error": null,
+      "job_id": "job_84049a66771accbef95ca585",
+      "resumed": false,
+      "run_id": "run_84049a66771accbef95ca585",
+      "sample": 1,
+      "task_id": "openlibrary-e0e34eb48957",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.11402,
+      "error": null,
+      "job_id": "job_dbb9cb758e79674bece9876f",
+      "resumed": false,
+      "run_id": "run_dbb9cb758e79674bece9876f",
+      "sample": 2,
+      "task_id": "openlibrary-e0e34eb48957",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 2.29005,
+      "error": null,
+      "job_id": "job_1e527accd3828913dc10ef82",
+      "resumed": false,
+      "run_id": "run_1e527accd3828913dc10ef82",
+      "sample": 1,
+      "task_id": "openlibrary-e9e9d8be33f0",
+      "verdict": "UNRESOLVED"
+    },
+    {
+      "cost_usd": 2.123608,
+      "error": null,
+      "job_id": "job_88db24b76bafaa9eb3595b2e",
+      "resumed": false,
+      "run_id": "run_88db24b76bafaa9eb3595b2e",
+      "sample": 2,
+      "task_id": "openlibrary-e9e9d8be33f0",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 0.973388,
+      "error": null,
+      "job_id": "job_89b4f2f6418b1680239bdcc0",
+      "resumed": false,
+      "run_id": "run_89b4f2f6418b1680239bdcc0",
+      "sample": 1,
+      "task_id": "openlibrary-f1f4efd65942",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.120591,
+      "error": null,
+      "job_id": "job_968c55c27b739b0552b373dd",
+      "resumed": false,
+      "run_id": "run_968c55c27b739b0552b373dd",
+      "sample": 2,
+      "task_id": "openlibrary-f1f4efd65942",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.173622,
+      "error": null,
+      "job_id": "job_6d050a14d23dab9b2b747949",
+      "resumed": false,
+      "run_id": "run_6d050a14d23dab9b2b747949",
+      "sample": 1,
+      "task_id": "openlibrary-facafbe7339c",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.104091,
+      "error": null,
+      "job_id": "job_d6aba6383e884b0745ee2007",
+      "resumed": false,
+      "run_id": "run_d6aba6383e884b0745ee2007",
+      "sample": 2,
+      "task_id": "openlibrary-facafbe7339c",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 2.219676,
+      "error": null,
+      "job_id": "job_36c16376ed4c67d49612b48b",
+      "resumed": false,
+      "run_id": "run_36c16376ed4c67d49612b48b",
+      "sample": 1,
+      "task_id": "openlibrary-febda3f008cb",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cost_usd": 1.883741,
+      "error": null,
+      "job_id": "job_e5ee9c92dc58fd65fe5fa62e",
+      "resumed": false,
+      "run_id": "run_e5ee9c92dc58fd65fe5fa62e",
+      "sample": 2,
+      "task_id": "openlibrary-febda3f008cb",
+      "verdict": "RESOLVED"
+    }
+  ],
+  "max_cost_usd": 80.0,
+  "pass_at_k": {
+    "1": 0.581081081081081,
+    "2": 0.6756756756756757
+  },
+  "resolved": 43,
+  "schema_version": 1,
+  "skipped": 0,
+  "total_cost_usd": 67.545351
+}
