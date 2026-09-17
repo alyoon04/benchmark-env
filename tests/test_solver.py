@@ -245,5 +245,8 @@ class TestIgnoredPathsInsideSubmodules:
         assert matches_default_ignores("a/__pycache__/b.pyc")
         assert matches_default_ignores("x.pyc")
         assert matches_default_ignores(".pytest_cache/v/cache/nodeids")
+        # a solver running mypy left 313 files under .mypy_cache in a live run
+        assert matches_default_ignores(".mypy_cache/3.12/_ast.data.json")
+        assert matches_default_ignores(".ruff_cache/CACHEDIR.TAG")
         assert not matches_default_ignores("__pycache__")  # a file literally named so
         assert not matches_default_ignores("src/mod.py")
