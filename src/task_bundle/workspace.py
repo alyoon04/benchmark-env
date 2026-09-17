@@ -32,7 +32,15 @@ _NO_USER_CONFIG = {
 # Engine hygiene, applied on top of the repo's own .gitignore when computing a
 # changeset: bytecode/caches that any test run leaves behind and that no solver
 # means as part of its fix. Deliberately tiny — everything else is the repo's call.
-DEFAULT_IGNORES = ["__pycache__/", "*.pyc", "*.pyo", ".pytest_cache/"]
+DEFAULT_IGNORES = [
+    "__pycache__/",
+    "*.pyc",
+    "*.pyo",
+    ".pytest_cache/",
+    ".mypy_cache/",
+    ".ruff_cache/",
+    ".hypothesis/",
+]
 
 
 def _git(
