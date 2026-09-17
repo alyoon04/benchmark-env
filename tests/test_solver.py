@@ -200,3 +200,50 @@ class TestRenderDiff:
         before.mkdir()
         after.mkdir()
         assert render_diff(before, after) == ""
+
+
+class TestIgnoredPathsInsideSubmodules:
+    """`git check-ignore` refuses pathspecs inside a submodule (exit 128); the host
+    clone has submodules as bare gitlinks, so those paths get DEFAULT_IGNORES only."""
+
+    @pytest.fixture()
+    def repo_with_gitlink(self, tmp_path: Path) -> Path:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        (repo / ".gitignore").write_text("*.log\n")
+        # A gitlink entry without a real submodule checkout, like a shallow clone has.
+        subprocess.run(
+            ["git", "update-index", "--add", "--cacheinfo", f"160000,{'a' * 40},vendor/infogami"],
+            cwd=repo,
+            check=True,
+        )
+        return repo
+
+    def test_submodule_paths_do_not_crash_and_use_defaults(self, repo_with_gitlink: Path) -> None:
+        from task_bundle.workspace import submodule_dirs
+
+        assert submodule_dirs(repo_with_gitlink) == {"vendor/infogami"}
+        paths = [
+            "vendor/infogami/infogami/__pycache__/__init__.cpython-312.pyc",
+            "vendor/infogami/infogami/core.py",  # a real edit inside the submodule counts
+            "vendor/infogami/debug.log",  # superproject .gitignore does not apply inside
+            "openlibrary/core/db.py",
+            "openlibrary/__pycache__/db.cpython-312.pyc",
+            "server.log",
+        ]
+        ignored = ignored_paths(repo_with_gitlink, paths)
+        assert ignored == {
+            "vendor/infogami/infogami/__pycache__/__init__.cpython-312.pyc",
+            "openlibrary/__pycache__/db.cpython-312.pyc",
+            "server.log",
+        }
+
+    def test_matches_default_ignores(self) -> None:
+        from task_bundle.workspace import matches_default_ignores
+
+        assert matches_default_ignores("a/__pycache__/b.pyc")
+        assert matches_default_ignores("x.pyc")
+        assert matches_default_ignores(".pytest_cache/v/cache/nodeids")
+        assert not matches_default_ignores("__pycache__")  # a file literally named so
+        assert not matches_default_ignores("src/mod.py")
