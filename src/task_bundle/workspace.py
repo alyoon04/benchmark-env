@@ -11,6 +11,7 @@ between two manifests (honouring the repo's own ``.gitignore``), rendering a uni
 diff from before/after copies of the changed files, and the hidden-content leak guard.
 """
 
+import fnmatch
 import hashlib
 import os
 import shutil
@@ -276,16 +277,66 @@ def compute_changeset(
     return Changeset(tuple(sorted(modified)), tuple(sorted(added)), tuple(sorted(deleted)))
 
 
+def submodule_dirs(repo: Path) -> set[str]:
+    """Repo-relative paths recorded as submodule pointers (gitlinks, mode 160000)."""
+    try:
+        proc = subprocess.run(
+            ["git", "ls-files", "--stage", "-z"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=False,
+            env={
+                **os.environ,
+                **_NO_USER_CONFIG,
+                "GIT_CEILING_DIRECTORIES": str(repo.resolve().parent),
+            },
+        )
+    except FileNotFoundError as e:
+        raise GitError("git executable not found on PATH. Install git and retry.") from e
+    if proc.returncode != 0:
+        return set()
+    dirs = set()
+    for entry in proc.stdout.split("\0"):
+        if entry.startswith("160000 "):
+            dirs.add(entry.split("\t", 1)[1])
+    return dirs
+
+
+def matches_default_ignores(path: str) -> bool:
+    """Apply ``DEFAULT_IGNORES`` to a path without git (directory and glob patterns)."""
+    parts = path.split("/")
+    for pattern in DEFAULT_IGNORES:
+        if pattern.endswith("/"):
+            if pattern[:-1] in parts[:-1]:
+                return True
+        elif fnmatch.fnmatch(parts[-1], pattern):
+            return True
+    return False
+
+
 def ignored_paths(repo: Path, paths: Iterable[str]) -> set[str]:
     """Subset of ``paths`` that git would ignore in ``repo`` (its .gitignore rules).
 
     Tracked files are never reported ignored (plain ``check-ignore`` semantics), so a
     tracked file the solver edited always counts even if a pattern matches it.
     ``DEFAULT_IGNORES`` are layered on via a throwaway excludes file.
+
+    Paths inside a *submodule* cannot be asked of the superproject (``check-ignore``
+    exits 128 with "is in submodule"), and the host clone never initializes
+    submodules, so those paths get only the ``DEFAULT_IGNORES`` treatment: bytecode
+    and caches a test run leaves under a vendored checkout are dropped, real edits
+    there still count.
     """
     candidates = [p for p in paths if p]
     if not candidates or not (repo / ".git").exists():
         return set()
+    submodules = submodule_dirs(repo)
+    inside = [p for p in candidates if any(p == s or p.startswith(s + "/") for s in submodules)]
+    outside = [p for p in candidates if p not in set(inside)]
+    ignored = {p for p in inside if matches_default_ignores(p)}
+    if not outside:
+        return ignored
     with tempfile.NamedTemporaryFile("w", suffix=".gitignore", delete=False) as f:
         f.write("\n".join(DEFAULT_IGNORES) + "\n")
         excludes = f.name
@@ -293,7 +344,7 @@ def ignored_paths(repo: Path, paths: Iterable[str]) -> set[str]:
         proc = subprocess.run(
             ["git", "-c", f"core.excludesFile={excludes}", "check-ignore", "--stdin", "-z"],
             cwd=repo,
-            input="\0".join(candidates) + "\0",
+            input="\0".join(outside) + "\0",
             capture_output=True,
             text=True,
             check=False,
@@ -309,7 +360,7 @@ def ignored_paths(repo: Path, paths: Iterable[str]) -> set[str]:
         os.unlink(excludes)
     if proc.returncode not in (0, 1):  # 1 = nothing ignored
         raise GitError(f"git check-ignore failed (exit {proc.returncode}): {proc.stderr.strip()}")
-    return {p for p in proc.stdout.split("\0") if p}
+    return ignored | {p for p in proc.stdout.split("\0") if p}
 
 
 def render_diff(before: Path, after: Path) -> str:
