@@ -325,6 +325,10 @@ class ClaudeSolver:
             except anthropic.APIError as e:
                 # The SDK already retried what is retryable; keep the edits made so far.
                 stop = f"api error after retries: {type(e).__name__}: {e}"
+                if usage["output"] == 0:
+                    # Nothing was attempted: a billing/outage refusal must not be graded
+                    # as a model failure. Fail the run so a fleet resume retries it.
+                    raise SolverError(f"API refused before the model produced anything: {e}") from e
                 transcript.append(f"[{iteration}] {stop}")
                 trajectory.append(
                     {"step": iteration, "type": "error", "ts": utc_now_iso(), "error": stop}
