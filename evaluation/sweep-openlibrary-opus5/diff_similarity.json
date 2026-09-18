@@ -1,0 +1,389 @@
+[
+  {
+    "task": "ansible-combine-vars",
+    "sample": 1,
+    "files": 0.5,
+    "gold_lines_reproduced": 0.26,
+    "similarity": 0.28,
+    "solver_added": 13,
+    "gold_added": 19
+  },
+  {
+    "task": "ansible-combine-vars",
+    "sample": 2,
+    "files": 0.5,
+    "gold_lines_reproduced": 0.26,
+    "similarity": 0.29,
+    "solver_added": 11,
+    "gold_added": 19
+  },
+  {
+    "task": "openlibrary-02f647f7d525",
+    "sample": 1,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.83,
+    "similarity": 0.84,
+    "solver_added": 47,
+    "gold_added": 46
+  },
+  {
+    "task": "openlibrary-02f647f7d525",
+    "sample": 2,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.85,
+    "similarity": 0.89,
+    "solver_added": 44,
+    "gold_added": 46
+  },
+  {
+    "task": "openlibrary-0c5d154db9a1",
+    "sample": 1,
+    "files": 0.44,
+    "gold_lines_reproduced": 0.21,
+    "similarity": 0.23,
+    "solver_added": 38,
+    "gold_added": 87
+  },
+  {
+    "task": "openlibrary-0c5d154db9a1",
+    "sample": 2,
+    "files": 0.44,
+    "gold_lines_reproduced": 0.23,
+    "similarity": 0.28,
+    "solver_added": 27,
+    "gold_added": 87
+  },
+  {
+    "task": "openlibrary-1d2cbffd8cbd",
+    "sample": 1,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.86,
+    "similarity": 0.84,
+    "solver_added": 114,
+    "gold_added": 103
+  },
+  {
+    "task": "openlibrary-2edaf7283cf5",
+    "sample": 1,
+    "files": 0.67,
+    "gold_lines_reproduced": 0.39,
+    "similarity": 0.43,
+    "solver_added": 16,
+    "gold_added": 31
+  },
+  {
+    "task": "openlibrary-31d6ecf3c04c",
+    "sample": 1,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.61,
+    "similarity": 0.58,
+    "solver_added": 69,
+    "gold_added": 57
+  },
+  {
+    "task": "openlibrary-31d6ecf3c04c",
+    "sample": 2,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.65,
+    "similarity": 0.59,
+    "solver_added": 73,
+    "gold_added": 57
+  },
+  {
+    "task": "openlibrary-46bcf7c30178",
+    "sample": 1,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.43,
+    "similarity": 0.39,
+    "solver_added": 50,
+    "gold_added": 37
+  },
+  {
+    "task": "openlibrary-46bcf7c30178",
+    "sample": 2,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.51,
+    "similarity": 0.49,
+    "solver_added": 49,
+    "gold_added": 37
+  },
+  {
+    "task": "openlibrary-46d7d325e6ed",
+    "sample": 1,
+    "files": 0.25,
+    "gold_lines_reproduced": 0.11,
+    "similarity": 0.24,
+    "solver_added": 11,
+    "gold_added": 44
+  },
+  {
+    "task": "openlibrary-46d7d325e6ed",
+    "sample": 2,
+    "files": 0.33,
+    "gold_lines_reproduced": 0.14,
+    "similarity": 0.27,
+    "solver_added": 9,
+    "gold_added": 44
+  },
+  {
+    "task": "openlibrary-5f7d8d190e2f",
+    "sample": 1,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.77,
+    "similarity": 0.79,
+    "solver_added": 52,
+    "gold_added": 39
+  },
+  {
+    "task": "openlibrary-5f7d8d190e2f",
+    "sample": 2,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.64,
+    "similarity": 0.79,
+    "solver_added": 40,
+    "gold_added": 39
+  },
+  {
+    "task": "openlibrary-630221ab686c",
+    "sample": 1,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.29,
+    "similarity": 0.11,
+    "solver_added": 144,
+    "gold_added": 28
+  },
+  {
+    "task": "openlibrary-71b18af1fa3b",
+    "sample": 2,
+    "files": 0.67,
+    "gold_lines_reproduced": 0.47,
+    "similarity": 0.46,
+    "solver_added": 186,
+    "gold_added": 115
+  },
+  {
+    "task": "openlibrary-79dccb33ad74",
+    "sample": 1,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.62,
+    "similarity": 0.68,
+    "solver_added": 27,
+    "gold_added": 29
+  },
+  {
+    "task": "openlibrary-79dccb33ad74",
+    "sample": 2,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.52,
+    "similarity": 0.51,
+    "solver_added": 27,
+    "gold_added": 29
+  },
+  {
+    "task": "openlibrary-7b1ec94b425e",
+    "sample": 1,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.63,
+    "similarity": 0.68,
+    "solver_added": 29,
+    "gold_added": 19
+  },
+  {
+    "task": "openlibrary-8c988af810a4",
+    "sample": 1,
+    "files": 0.67,
+    "gold_lines_reproduced": 0.62,
+    "similarity": 0.42,
+    "solver_added": 44,
+    "gold_added": 16
+  },
+  {
+    "task": "openlibrary-8c988af810a4",
+    "sample": 2,
+    "files": 0.5,
+    "gold_lines_reproduced": 0.06,
+    "similarity": 0.11,
+    "solver_added": 31,
+    "gold_added": 16
+  },
+  {
+    "task": "openlibrary-90475fb6c168",
+    "sample": 1,
+    "files": 0.33,
+    "gold_lines_reproduced": 0.1,
+    "similarity": 0.11,
+    "solver_added": 23,
+    "gold_added": 73
+  },
+  {
+    "task": "openlibrary-90475fb6c168",
+    "sample": 2,
+    "files": 0.33,
+    "gold_lines_reproduced": 0.1,
+    "similarity": 0.12,
+    "solver_added": 21,
+    "gold_added": 73
+  },
+  {
+    "task": "openlibrary-9a9204b43f9a",
+    "sample": 2,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.78,
+    "similarity": 0.67,
+    "solver_added": 95,
+    "gold_added": 76
+  },
+  {
+    "task": "openlibrary-9d9f3a199838",
+    "sample": 1,
+    "files": 0.4,
+    "gold_lines_reproduced": 0.48,
+    "similarity": 0.38,
+    "solver_added": 248,
+    "gold_added": 170
+  },
+  {
+    "task": "openlibrary-9d9f3a199838",
+    "sample": 2,
+    "files": 0.4,
+    "gold_lines_reproduced": 0.49,
+    "similarity": 0.38,
+    "solver_added": 244,
+    "gold_added": 170
+  },
+  {
+    "task": "openlibrary-d38cb5a4162a",
+    "sample": 1,
+    "files": 0.5,
+    "gold_lines_reproduced": 0.21,
+    "similarity": 0.18,
+    "solver_added": 29,
+    "gold_added": 19
+  },
+  {
+    "task": "openlibrary-d38cb5a4162a",
+    "sample": 2,
+    "files": 0.5,
+    "gold_lines_reproduced": 0.21,
+    "similarity": 0.17,
+    "solver_added": 33,
+    "gold_added": 19
+  },
+  {
+    "task": "openlibrary-ddbbdd64ecde",
+    "sample": 1,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.44,
+    "similarity": 0.67,
+    "solver_added": 25,
+    "gold_added": 27
+  },
+  {
+    "task": "openlibrary-ddbbdd64ecde",
+    "sample": 2,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.85,
+    "similarity": 0.86,
+    "solver_added": 26,
+    "gold_added": 27
+  },
+  {
+    "task": "openlibrary-de903b9535d5",
+    "sample": 1,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.24,
+    "similarity": 0.09,
+    "solver_added": 46,
+    "gold_added": 21
+  },
+  {
+    "task": "openlibrary-de903b9535d5",
+    "sample": 2,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.1,
+    "similarity": 0.09,
+    "solver_added": 22,
+    "gold_added": 21
+  },
+  {
+    "task": "openlibrary-e0e34eb48957",
+    "sample": 1,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.67,
+    "similarity": 0.59,
+    "solver_added": 100,
+    "gold_added": 69
+  },
+  {
+    "task": "openlibrary-e0e34eb48957",
+    "sample": 2,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.7,
+    "similarity": 0.65,
+    "solver_added": 95,
+    "gold_added": 69
+  },
+  {
+    "task": "openlibrary-e9e9d8be33f0",
+    "sample": 2,
+    "files": 0.44,
+    "gold_lines_reproduced": 0.71,
+    "similarity": 0.64,
+    "solver_added": 218,
+    "gold_added": 225
+  },
+  {
+    "task": "openlibrary-f1f4efd65942",
+    "sample": 1,
+    "files": 0.44,
+    "gold_lines_reproduced": 0.57,
+    "similarity": 0.64,
+    "solver_added": 66,
+    "gold_added": 83
+  },
+  {
+    "task": "openlibrary-f1f4efd65942",
+    "sample": 2,
+    "files": 0.33,
+    "gold_lines_reproduced": 0.54,
+    "similarity": 0.62,
+    "solver_added": 62,
+    "gold_added": 83
+  },
+  {
+    "task": "openlibrary-facafbe7339c",
+    "sample": 1,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.62,
+    "similarity": 0.68,
+    "solver_added": 35,
+    "gold_added": 37
+  },
+  {
+    "task": "openlibrary-facafbe7339c",
+    "sample": 2,
+    "files": 1.0,
+    "gold_lines_reproduced": 0.54,
+    "similarity": 0.65,
+    "solver_added": 31,
+    "gold_added": 37
+  },
+  {
+    "task": "openlibrary-febda3f008cb",
+    "sample": 1,
+    "files": 0.07,
+    "gold_lines_reproduced": 0.68,
+    "similarity": 0.73,
+    "solver_added": 528,
+    "gold_added": 695
+  },
+  {
+    "task": "openlibrary-febda3f008cb",
+    "sample": 2,
+    "files": 0.07,
+    "gold_lines_reproduced": 0.67,
+    "similarity": 0.64,
+    "solver_added": 504,
+    "gold_added": 695
+  }
+]

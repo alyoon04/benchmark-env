@@ -13,9 +13,10 @@ isolation — with every command logged to a queryable SQLite database.
 >
 > **Results so far** ([`evaluation/sweep-openlibrary-opus5/`](evaluation/sweep-openlibrary-opus5/)):
 > a fleet of 37 SWE-bench Pro tasks (36 openlibrary + ansible) × 2 samples with
-> claude-opus-5 resolved **74.1% pass@1 / 86.2% pass@2** over the 58 attempts the API
-> served, at **$0.91 per attempt** with a 94.7% prompt-cache hit rate, in 70 minutes on
-> a laptop. On the ansible instance the rewritten agent loop (edit tool, prompt caching)
+> claude-opus-5 resolved **71.7% pass@1 / 83.3% pass@2** over the 60 attempts the API
+> served (70.4% after excluding 3 tasks a diff-similarity check flags as memorized), at
+> **$0.91 per attempt** with a 94.7% prompt-cache hit rate, in 70 minutes on a laptop.
+> Single-repo pilot, not a leaderboard number; details and caveats in the writeup. On the ansible instance the rewritten agent loop (edit tool, prompt caching)
 > resolves the task for **$0.18** versus $2.37 for the original loop — ~13× cheaper.
 > Grading works **in place** on the image's own repo tree, so instances whose
 > dependencies live under the repo dir outside git (submodule checkouts, `node_modules`,
