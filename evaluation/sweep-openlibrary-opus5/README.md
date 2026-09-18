@@ -18,31 +18,69 @@ Wall clock: 70 minutes for 74 attempts.
 
 | Metric | Value |
 |---|---|
-| Attempts with a real model run | 58 (29 tasks × 2, ansible included) |
+| Attempts the API served | 60 (30 tasks × 2, ansible included) |
 | Resolved | 43 |
-| **pass@1** | **74.1%** (43/58) |
-| **pass@2** | **86.2%** (25 of 29 tasks solved at least once) |
-| Solved in both samples | 18 of 28 fully attempted tasks |
+| **pass@1** | **71.7%** (43/60) |
+| **pass@2** | **83.3%** (25 of 30 tasks solved at least once) |
+| Solved in both samples | 18 of 30 |
+| **pass@1 excluding 3 memorized tasks** (see contamination check) | **70.4%** (38/54) |
 | Solver spend | $67.55 total, $0.91 mean / $0.96 median per attempt, $2.29 max |
 | Cost per resolved attempt | $1.57 |
 | Prompt-cache hit rate | 94.7% (50.8M cache reads vs 3.0K uncached input tokens) |
 | Iterations | mean 20.4 (resolved 24.1, unresolved 15.3); 34 attempts hit the 30 cap |
 
-**Why 58 and not 74.** The Anthropic account's credit balance ran out about $67 into
-the fleet. The last 16 attempts (8 tasks, both samples) were refused by the API before
-the model produced a single token (`credit balance is too low`), and the harness graded
-them UNRESOLVED because no fix was made. The raw fleet numbers are therefore pass@1
-58.1% / pass@2 67.6% over 74; the table above excludes those 16 refusals as
-non-attempts. They are reset to `error` in SQLite and will run on the next resume. The
-fix in this PR makes an API refusal with zero model progress an `ERROR` verdict
-(retryable) instead of `UNRESOLVED`, so a billing or outage event cannot masquerade as
-model failures again.
+**Why 60 and not 74.** The Anthropic account's credit balance ran out about $67 into
+the fleet. 14 attempts (7 tasks, both samples) were refused by the API before the model
+produced a single token (`credit balance is too low`), and the harness graded them
+UNRESOLVED because no fix was made. Two further attempts on one task were cut off by
+the same refusal mid-solve; they are counted (one had already resolved, one had not).
+The raw fleet numbers are therefore pass@1 58.1% / pass@2 67.6% over 74; the table
+above excludes the 14 zero-progress refusals as non-attempts. They are reset to `error`
+in SQLite and will run on the next resume. A refusal with zero model progress now
+yields an `ERROR` verdict (retryable) instead of `UNRESOLVED`, so a billing or outage
+event cannot masquerade as model failures again.
+
+## Contamination check
+
+These repositories and their fix commits are public and predate the model's training
+cutoff, so a high score could be memorization. `scripts/diff_similarity.py` compares
+every resolved attempt's diff with the gold patch (`diff_similarity.json` has the
+per-attempt numbers):
+
+| Bucket (share of gold patch's added code lines reproduced verbatim) | Attempts | Tasks |
+|---|---|---|
+| ≥ 80% and overall similarity ≥ 0.8 (near-verbatim) | 4 | 3 |
+| 50–80% (partial) | 19 | 12 |
+| < 50% (independent) | 20 | 15 |
+
+The near-verbatim cases are memorization, not spec-following: on
+`openlibrary-02f647f7d525` the model reproduced the gold patch's docstrings word for
+word including `See #9440`, an issue number that appears nowhere in the task
+description. The partial bucket is ambiguous by construction: SWE-bench Pro descriptions
+carry a *Requirements* and an *Interface* section that name the classes, functions and
+fields to add, so any correct fix shares structure with the reference.
+
+Sensitivity of the headline to exclusions:
+
+| Basis | Tasks | Attempts | pass@1 | Solved ≥ once |
+|---|---|---|---|---|
+| All served | 30 | 60 | 71.7% | 83.3% |
+| Excluding the 3 near-verbatim tasks | 27 | 54 | 70.4% | 81.5% |
+| Excluding every task with any attempt ≥ 50% reproduced (strict) | 15 | 30 | 56.7% | 66.7% |
+
+The number to quote is the middle row. The strict row is a lower bound that also throws
+out fixes that are similar because the spec leaves little room, so the truth is between
+them. Either way this pilot is above published SWE-bench Pro figures for frontier
+models (roughly 25–45% on the full public set): the 36 openlibrary instances are the
+first 40 in dataset order rather than a random sample, single-repo, Python-only, and
+filtered by verify-gold, all of which favour the solver. Treat it as a pipeline
+validation and cost model, not a leaderboard entry.
 
 ## Failure taxonomy (31 unresolved attempts, from the reports)
 
 | Bucket | Attempts | Notes |
 |---|---|---|
-| No code change made | 15 | 14 API credit refusals + 1 partial (credit ran out mid-solve) |
+| No code change made | 15 | 14 API credit refusals (excluded above) + 1 cut off mid-solve |
 | fail2pass still failing, pass2pass intact, hit iteration cap | 12 | The dominant *model* failure: ran out of turns while still working |
 | fail2pass still failing, pass2pass intact, model stopped early | 2 | Declared done with a wrong or incomplete fix |
 | fail2pass failing and pass2pass broken, hit cap | 2 | Regressed existing behaviour |
