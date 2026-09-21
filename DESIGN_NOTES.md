@@ -335,3 +335,15 @@ runs; what still blocks it on this arm64 host is the amd64 Go toolchain segfault
 qemu, reproduced outside the harness. The committed reports and logs are the deterministic
 proof that the grading pipeline is correct end-to-end on data the engine had never seen
 during development.
+
+`evaluation/sweep-openlibrary-opus5/` is the first fleet-scale result: 37 tasks × 2
+samples with claude-opus-5, 74 attempts in 70 minutes on a laptop, 71.7% pass@1 over the
+60 attempts the API served, $0.91 per attempt. It comes with two analyses the harness
+makes cheap: a **contamination check** (`scripts/diff_similarity.py`) comparing every
+resolved diff with the gold patch, which flags 3 tasks as memorized — one reproduces the
+reference docstrings including an issue number absent from the task text — and a
+**failure taxonomy** from the per-test reports, which shows the iteration cap, not the
+model, as the binding constraint (12 of 16 real failures were mid-work at the cap; only
+2 regressed a pass2pass test). The writeup states the raw, served, memorization-excluded
+and strict-excluded numbers side by side and why a single-repo pilot is not a
+leaderboard entry.
