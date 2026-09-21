@@ -91,13 +91,27 @@ Post-milestone: grading moved to **solve-in-place + changeset replay** (see the
 decision table), closing the scope gap the multi-instance sweep exposed — repos
 whose deps live under the repo dir outside git now grade correctly (see
 `evaluation/multi-instance/`). Fleet adds resumable concurrent execution on top
-of that grading path. Ruff + mypy --strict are clean.
+of that grading path, then a spend cap, `--from-summary`, and per-image snapshot /
+baseline reuse. The Claude solver was rewritten (edit tool, search, prompt caching,
+effort, structured trajectories; ansible: $2.37 → $0.18). `import-swebench` gained
+bulk mode with a resumable summary, transport-error hardening, and pytest-id
+normalization.
+
+**Evaluated (2026-09-17):** the first fleet sweep — 37 SWE-bench Pro tasks × 2 samples,
+claude-opus-5 — resolved 71.7% pass@1 / 83.3% pass@2 over the 60 served attempts at
+$0.91 per attempt (`evaluation/sweep-openlibrary-opus5/`). A diff-similarity
+contamination check flags 3 tasks as memorized (70.4% excluding them). The sweep also
+surfaced and fixed: `check-ignore` crashing on submodule paths, tool caches leaking into
+changesets, and API refusals with no model progress being graded UNRESOLVED (now ERROR,
+retryable). 194 tests, ruff + mypy --strict clean.
 
 ## Possible follow-ups (out of original scope)
 
-- Live ClaudeSolver run on real instances with the rewritten loop (caching, effort,
-  edit_file); the previous live solve predates it. No credentials were available in the
-  session that made the change, so it is verified with a scripted client + Docker only.
+- Finish the 7 tasks (14 attempts) the sweep could not run because the account's
+  credit balance ran out; they are reset to `error` and resume with the same command.
+- A random sample across all three Python repos (not the first 40 of one), with the
+  contamination check as a standard step and a per-repo breakdown — the number to
+  publish. Then the iteration-cap ablation (50 vs 30) the failure taxonomy points at.
 - A second provider backend (OpenAI-compatible endpoint for open-weight models) behind
   the same `Solver` protocol and trajectory format.
 - Server-side context editing (`clear_tool_uses`) instead of the hard context budget.

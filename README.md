@@ -4,28 +4,31 @@ A CLI for packaging SWE-bench-style coding tasks as portable **bundles**, valida
 their baseline test contract in containers, and running LLM solvers against them in
 isolation — with every command logged to a queryable SQLite database.
 
-> **Status: feature-complete**, built in reviewable milestones. See
-> [DESIGN_NOTES.md](DESIGN_NOTES.md) for the design rationale, [PROGRESS.md](PROGRESS.md)
-> for the decision log, and [DESIGN.md](DESIGN.md) for the working design. The full
-> command surface — `init`, `validate`, `run` / `fleet` (stub + claude solvers), `verify-gold`,
-> `import-swebench`, `diff`, `logs` / `runs`, `doctor`, and `clean` — is implemented,
-> tested, and documented.
->
-> **Results so far** ([`evaluation/sweep-openlibrary-opus5/`](evaluation/sweep-openlibrary-opus5/)):
-> a fleet of 37 SWE-bench Pro tasks (36 openlibrary + ansible) × 2 samples with
-> claude-opus-5 resolved **71.7% pass@1 / 83.3% pass@2** over the 60 attempts the API
-> served (70.4% after excluding 3 tasks a diff-similarity check flags as memorized), at
-> **$0.91 per attempt** with a 94.7% prompt-cache hit rate, in 70 minutes on a laptop.
-> Single-repo pilot, not a leaderboard number; details and caveats in the writeup. On the ansible instance the rewritten agent loop (edit tool, prompt caching)
-> resolves the task for **$0.18** versus $2.37 for the original loop — ~13× cheaper.
-> Grading works **in place** on the image's own repo tree, so instances whose
-> dependencies live under the repo dir outside git (submodule checkouts, `node_modules`,
-> compiled extensions) grade correctly; the cross-language sweep in
-> [`evaluation/multi-instance/`](evaluation/multi-instance/) shows the openlibrary
-> instance that used to be refused now verifying, and the Go path executing real
-> `go test` runs (blocked on this arm64 host only by the amd64 toolchain segfaulting
-> under qemu). `verify-gold` still *refuses* (never mis-grades) anything it cannot
-> prove solvable.
+> **Status: feature-complete and evaluated.** Every command — `init`, `validate`,
+> `run` / `fleet` (stub + claude solvers), `verify-gold`, `import-swebench`, `diff`,
+> `logs` / `runs`, `doctor`, `clean` — is implemented, tested (194 tests, ruff + mypy
+> strict), and documented. Design rationale in [DESIGN_NOTES.md](DESIGN_NOTES.md),
+> decision log in [PROGRESS.md](PROGRESS.md).
+
+## Results
+
+All figures trace to committed `fleet_summary.json` / per-run `report.json` files.
+
+| What | Result | Where |
+|---|---|---|
+| **Fleet sweep**: 37 SWE-bench Pro tasks (36 openlibrary + ansible) × 2 samples, claude-opus-5, 30-iteration cap | **71.7% pass@1 / 83.3% pass@2** over the 60 attempts the API served; **70.4%** after excluding 3 tasks the contamination check flags as memorized | [`evaluation/sweep-openlibrary-opus5/`](evaluation/sweep-openlibrary-opus5/) |
+| Cost | **$0.91 per attempt** ($1.57 per resolved attempt), 94.7% prompt-cache hit rate, 70 min wall clock for 74 attempts on a laptop | same |
+| Contamination check | 4 of 43 resolved attempts (3 tasks) reproduce ≥80% of the gold patch verbatim, one including an issue number absent from the task text; 20 are independent (<50%) | `scripts/diff_similarity.py`, `diff_similarity.json` |
+| Failure taxonomy | Of 16 real model failures, 12 hit the iteration cap mid-work, 2 stopped early with a wrong fix, 2 regressed a pass2pass test | same writeup |
+| Agent loop rewrite | ansible combine_vars resolved for **$0.18** vs $2.37 on the original loop (~13× cheaper): edit tool, prompt caching, effort control | [`evaluation/ansible-combine-vars/`](evaluation/ansible-combine-vars/) |
+| In-place grading | The openlibrary instance previously refused (`ModuleNotFoundError: infogami`, a submodule the clone-swap discarded) now verifies and grades | [`evaluation/multi-instance/`](evaluation/multi-instance/) |
+
+**Read the sweep number as a pipeline validation, not a leaderboard entry.** It is one
+repository family, Python only, the first 40 instances in dataset order, filtered by
+`verify-gold` — all of which favour the solver — and published SWE-bench Pro figures for
+frontier models on the full set are roughly 25–45%. The writeup states the raw (58.1%
+over all 74 jobs, including 14 refused by the API when the account's credit ran out),
+served, memorization-excluded, and strict-excluded numbers side by side.
 
 ## Why
 
@@ -60,6 +63,21 @@ uv run task run examples/toy-calc           # no-op stub -> UNRESOLVED
 
 Expected: a table showing the pass2pass suite `passed passed passed` and the
 fail2pass suite `failed failed failed`, then "Baseline contract holds".
+
+Then the path that produced the results above (needs `ANTHROPIC_API_KEY`):
+
+```sh
+uv run task run examples/toy-calc --solver claude --effort medium   # one live solve, ~$0.03
+uv run task import-swebench --repo internetarchive/openlibrary --limit 40 --dest bundles
+uv run task fleet --from-summary bundles/import_summary.json --solver claude \
+  --samples 2 --concurrency 4 --container-limit 4 --max-cost-usd 80
+uv run python scripts/diff_similarity.py <fleet-id>                  # contamination check
+```
+
+The import pulls each instance's prebuilt image (~4 GB each) and runs `verify-gold`,
+recording gradeable/refused per instance in `bundles/import_summary.json`; the fleet
+prints pass@k and spend and writes `fleet_summary.json`. Rerunning either command
+resumes.
 
 Or scaffold your own bundle from any repo:
 
@@ -242,7 +260,7 @@ gets a fresh container so runs cannot contaminate each other.
 | `task logs [<command-id>]` | ✅ | No argument: list recent commands. With an id: show argv, exit code, per-test results, artifacts, and the command log. |
 | `task runs list` / `task runs show <run-id>` | ✅ | Query solver runs (populated by `task run`). |
 | `task run <bundle> [--solver stub\|claude] [--patch FILE \| --gold] [--model M] [--effort E] [--max-iterations N] [--rebuild]` | ✅ | Baseline → solve in place → replay changeset → grade, in separate containers; before/after table, changed/added/deleted counts, RESOLVED/UNRESOLVED verdict, sorted-key `report.json` + `solver.diff`/`transcript.txt`/`trajectory.jsonl` artifacts, run + token/cache/cost stats recorded in DB. `claude` solver needs Anthropic credentials. |
-| `task fleet <bundle>... [--samples K] [--concurrency N] [--container-limit N] [--backend local\|kubernetes]` | ✅ | Concurrent, disk-aware, resumable multi-task/multi-sample execution with content-derived run ids, pass@k, and a JSON fleet summary. |
+| `task fleet [<bundle>...] [--from-summary import_summary.json] [--samples K] [--effort E] [--max-iterations N] [--concurrency N] [--container-limit N] [--max-cost-usd D] [--min-free-disk-gb G] [--backend local\|kubernetes --registry R --kube-namespace NS]` | ✅ | Concurrent, resumable multi-task/multi-sample execution: content-derived job and run ids (rerun = resume), spend cap with `SKIPPED` jobs, disk-pressure backoff, per-image snapshot and baseline reuse across attempts, unbiased pass@k, running spend per job, and a JSON fleet summary. `--from-summary` takes the gradeable bundles from a bulk import. |
 | `task import-swebench <instance-id> [--dest DIR] [--test-command TPL] [--timeout N] [--no-init] [--no-verify]`<br>`task import-swebench --repo ORG/NAME \| --language LANG [--limit N] [--list] [--dest PARENT]` | ✅ | Convert public SWE-bench Pro instances (ScaleAI/SWE-bench_Pro on HuggingFace) into ready-to-validate bundles: prebuilt instance image as base, hidden tests as test patch + explicit f2p/p2p ids, gold patch saved as `patch.diff`. The repo path is discovered from the image (no `/app` hardcode) and used in place, so submodules/`node_modules`/caches under it survive; Go instances get scoped packages, anchored `-run` patterns, and a writable `GOCACHE`. After `--init` it auto-runs `verify-gold` so a non-gradeable instance fails loudly at import. **Bulk mode** imports every match into `<parent>/<repo>-<sha12>/`, continues past refused or failed instances, and keeps `import_summary.json` so a re-run resumes (already-gradeable bundles are skipped). See `evaluation/` for real end-to-end runs. |
 | `task verify-gold <bundle> [--rebuild]` | ✅ | Prove solvability: apply `patch.diff` via a deterministic stub solver and confirm every fail2pass test flips to pass and every pass2pass holds. Exit 2 (naming each offending test) if the golden patch doesn't cleanly resolve the task. Records no run — it's an authoring check. |
 | `task diff <run-id>` | ✅ | Print the unified diff a run's solver produced (raw, pipeable to `git apply`). |
@@ -284,7 +302,18 @@ uv run ruff format .   # format
 uv run mypy            # strict type-checking
 ```
 
-Layout: `src/task_bundle/` (`bundle.py` spec/state, `workspace.py` pinned clones +
-changeset/diff math, `harness.py` container orchestration, `run.py` the two-phase
-pipeline, `cli.py` typer app, `errors.py` actionable error hierarchy); fixture toy repo
-under `tests/fixtures/toy_repo/`.
+Layout: `src/task_bundle/` — `bundle.py` spec/state, `workspace.py` pinned clones +
+changeset/diff math + leak guard, `harness.py` images, snapshots and staging, `run.py`
+the two-phase pipeline (with per-image caches), `execution.py` persisted runs,
+`fleet.py` scheduler / spend cap / pass@k, `solver/` (`stub.py`, `claude.py`),
+`swebench.py` importer, `db.py` SQLite, `cli.py` typer app, `errors.py`. Fixture toy
+repo under `tests/fixtures/toy_repo/`; imported SWE-bench Pro bundles under `bundles/`
+(metadata only; clones and state live in gitignored `.task/`).
+
+Analysis: `scripts/diff_similarity.py <fleet-id>` runs the contamination check over a
+fleet's resolved attempts (share of the gold patch reproduced verbatim, file overlap,
+diff similarity) and writes a per-attempt JSON.
+
+Test suite: 194 tests, 20 Docker-backed (auto-skipped without a daemon). Docker tests
+include end-to-end gold/no-op grading, the leak-guard abort, in-place grading with
+untracked content under the repo dir, fleet resume, and cache reuse across attempts.
